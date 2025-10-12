@@ -1,0 +1,336 @@
+// NinjaPay Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MODELS
+// ============================================
+
+model User {
+  id            String   @id @default(cuid())
+  walletAddress String   @unique
+  email         String?  @unique
+  arciumKeyId   String   // Reference to Arcium MPC key shares
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactions  Transaction[]
+  rewardAccount RewardAccount?
+  merchant      Merchant?
+
+  @@index([walletAddress])
+  @@map("users")
+}
+
+model RewardAccount {
+  id             String @id @default(cuid())
+  userId         String @unique
+  pointsBalance  Int    @default(0)
+  lifetimePoints Int    @default(0)
+  currentStreak  Int    @default(0)
+  longestStreak  Int    @default(0)
+  referralCode   String @unique
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([referralCode])
+  @@map("reward_accounts")
+}
+
+// ============================================
+// TRANSACTION MODELS
+// ============================================
+
+enum TxStatus {
+  PENDING
+  PROCESSING
+  CONFIRMED
+  FINALIZED
+  FAILED
+  CANCELLED
+}
+
+model Transaction {
+  id                String   @id @default(cuid())
+  userId            String
+  sender            String
+  recipient         String
+  encryptedAmount   Bytes    // ElGamal ciphertext
+  amountCommitment  String   // Pedersen commitment (public)
+  proofs            Json     // ZK proofs
+  signature         String?
+  status            TxStatus
+  sessionId         String?  // MagicBlock session ID
+  layer             String   @default("L1") // L1 or L2
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([sender])
+  @@index([recipient])
+  @@index([status])
+  @@map("transactions")
+}
+
+// ============================================
+// MERCHANT MODELS
+// ============================================
+
+enum KYCStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVIEW
+}
+
+model Merchant {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  businessName  String
+  email         String    @unique
+  kycStatus     KYCStatus @default(PENDING)
+  apiKey        String    @unique
+  webhookUrl    String?
+  webhookSecret String?
+  settings      Json      @default("{}")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentLinks PaymentLink[]
+  webhooks     Webhook[]
+  invoices     Invoice[]
+
+  @@index([apiKey])
+  @@index([email])
+  @@map("merchants")
+}
+
+model PaymentLink {
+  id          String   @id @default(cuid())
+  merchantId  String
+  url         String   @unique
+  productName String
+  description String?
+  amount      Decimal? @db.Decimal(20, 2)
+  currency    String   @default("USDC")
+  imageUrl    String?
+  redirectUrl String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([active])
+  @@map("payment_links")
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  merchantId  String
+  invoiceNo   String   @unique
+  customerEmail String?
+  amount      Decimal  @db.Decimal(20, 2)
+  currency    String   @default("USDC")
+  status      String   @default("draft")
+  dueDate     DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([status])
+  @@map("invoices")
+}
+
+// ============================================
+// WEBHOOK MODELS
+// ============================================
+
+model Webhook {
+  id          String   @id @default(cuid())
+  merchantId  String
+  url         String
+  events      String[] // Array of webhook events
+  secret      String   // HMAC secret for signature verification
+  enabled     Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant   Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([merchantId])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id              String    @id @default(cuid())
+  webhookId       String
+  paymentIntentId String?
+  eventType       String
+  payload         Json
+  responseStatus  Int?
+  responseBody    String?
+  attempts        Int       @default(0)
+  nextRetryAt     DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([nextRetryAt])
+  @@map("webhook_deliveries")
+}
+
+// ============================================
+// PAYROLL MODELS
+// ============================================
+
+enum PaymentSchedule {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum PayrollStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Company {
+  id              String   @id @default(cuid())
+  name            String
+  walletAddress   String   @unique
+  email           String   @unique
+  auditorKeyId    String?  // ElGamal key for compliance auditor
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employees   Employee[]
+  payrollRuns PayrollRun[]
+
+  @@index([walletAddress])
+  @@map("companies")
+}
+
+model Employee {
+  id              String          @id @default(cuid())
+  companyId       String
+  walletAddress   String
+  name            String
+  email           String
+  salary          Decimal         @db.Decimal(20, 2) // Will be encrypted at app level
+  paymentSchedule PaymentSchedule @default(MONTHLY)
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  company  Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payments PayrollPayment[]
+
+  @@index([companyId])
+  @@index([walletAddress])
+  @@index([active])
+  @@map("employees")
+}
+
+model PayrollRun {
+  id              String        @id @default(cuid())
+  companyId       String
+  status          PayrollStatus
+  totalAmount     Decimal       @db.Decimal(20, 2) // Encrypted aggregate
+  employeeCount   Int
+  scheduledDate   DateTime
+  executedDate    DateTime?
+  batchSignature  String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  company  Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payments PayrollPayment[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([scheduledDate])
+  @@map("payroll_runs")
+}
+
+model PayrollPayment {
+  id               String        @id @default(cuid())
+  payrollRunId     String
+  employeeId       String
+  walletAddress    String
+  encryptedAmount  Bytes
+  amountCommitment String
+  signature        String?
+  status           PayrollStatus
+  createdAt        DateTime      @default(now())
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+
+  @@index([payrollRunId])
+  @@index([employeeId])
+  @@index([status])
+  @@map("payroll_payments")
+}
+
+// ============================================
+// PAYMENT INTENT (API Gateway)
+// ============================================
+
+model PaymentIntent {
+  id                String   @id @default(cuid())
+  merchantId        String?
+  sender            String?
+  recipient         String
+  amountCommitment  String   // Pedersen commitment
+  status            TxStatus
+  sessionId         String?  // MagicBlock session
+  txSignature       String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([merchantId])
+  @@index([sender])
+  @@index([status])
+  @@map("payment_intents")
+}
+
+// ============================================
+// API KEYS
+// ============================================
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  merchantId  String
+  keyHash     String   @unique // Hashed API key
+  name        String
+  permissions String[] @default(["read", "write"])
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([merchantId])
+  @@index([keyHash])
+  @@map("api_keys")
+}

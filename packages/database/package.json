@@ -1,0 +1,27 @@
+{
+  "name": "@ninjapay/database",
+  "version": "1.0.0",
+  "description": "Database schema and client for NinjaPay",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["database", "prisma", "postgresql"],
+  "author": "NinjaPay Team",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^5.8.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.8.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}

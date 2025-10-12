@@ -1,0 +1,15 @@
+{
+  "name": "@ninjapay/config",
+  "version": "1.0.0",
+  "description": "Shared configuration for NinjaPay",
+  "main": "index.js",
+  "exports": {
+    "./eslint": "./eslint.config.js",
+    "./prettier": "./.prettierrc.js",
+    "./tsconfig": "./tsconfig.base.json"
+  },
+  "files": ["eslint.config.js", ".prettierrc.js", "tsconfig.base.json"],
+  "keywords": ["config", "eslint", "prettier", "typescript"],
+  "author": "NinjaPay Team",
+  "license": "MIT"
+}
