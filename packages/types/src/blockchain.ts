@@ -61,7 +61,7 @@ export interface CommitResult {
 
 export interface SolanaConfig {
   rpcUrl: string;
-  commitment: 'processed' | 'confirmed' | 'finalized';
+  commitment?: 'processed' | 'confirmed' | 'finalized';
   wsUrl?: string;
 }
 

@@ -1,0 +1,28 @@
+{
+  "name": "@ninjapay/solana-utils",
+  "version": "1.0.0",
+  "description": "Solana blockchain utilities for NinjaPay",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["solana", "web3", "blockchain"],
+  "author": "NinjaPay Team",
+  "license": "MIT",
+  "dependencies": {
+    "@solana/web3.js": "^1.87.6",
+    "@solana/spl-token": "^0.4.1",
+    "@coral-xyz/anchor": "^0.29.0",
+    "@ninjapay/types": "workspace:*",
+    "@ninjapay/logger": "workspace:*",
+    "tweetnacl": "^1.0.3",
+    "bs58": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "typescript": "^5.3.3"
+  }
+}
