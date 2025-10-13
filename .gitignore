@@ -70,3 +70,5 @@ venv/
 
 # Documentation
 !docs/
+
+tracks.md

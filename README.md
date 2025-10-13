@@ -29,24 +29,48 @@ NinjaPay is the privacy layer for Solana commerce, enabling individuals, merchan
 
 ```
 ninjapay/
-├── apps/                  # Frontend applications
-│   ├── mobile/           # React Native consumer app
-│   ├── merchant-dashboard/  # Next.js merchant portal
-│   └── payroll-console/  # Next.js payroll management
-├── services/             # Backend microservices
-│   ├── api-gateway/      # Express.js API gateway
-│   ├── payment-service/  # Rust payment processing
-│   └── arcium-service/   # Rust Arcium MPC integration
-├── agents/               # AI agent modules
-│   ├── compliance-agent/ # KYC/AML/fraud detection
-│   ├── analytics-agent/  # Insights & predictions
-│   └── investigator-agent/ # Suspicious activity detection
-├── packages/             # Shared libraries
-│   ├── arcium-sdk/       # Arcium integration
-│   ├── database/         # Prisma schema
-│   └── types/            # Shared TypeScript types
-└── programs/             # Solana smart contracts
-    └── ninjapay-vault/   # Anchor escrow program
+├── apps/                      # Frontend applications
+│   ├── mobile/               # React Native consumer app
+│   ├── merchant-dashboard/   # Next.js merchant portal
+│   ├── payroll-console/      # Next.js payroll management
+│   ├── admin-portal/         # Next.js admin/monitoring
+│   └── landing/              # Next.js marketing site
+│
+├── services/                  # Backend microservices
+│   ├── api-gateway/          # ✅ Express.js API gateway
+│   ├── payment-service/      # Rust payment processing
+│   ├── arcium-service/       # Rust Arcium MPC integration
+│   ├── merchant-service/     # Node.js merchant ops
+│   ├── payroll-service/      # Node.js payroll processing
+│   ├── reward-service/       # Node.js loyalty/rewards
+│   ├── webhook-service/      # Node.js event delivery
+│   └── ai-orchestrator/      # Python AI coordinator
+│
+├── agents/                    # AI agent modules
+│   ├── compliance-agent/     # Python (KYC/AML/fraud)
+│   ├── analytics-agent/      # Python (Insights/predictions)
+│   ├── investigator-agent/   # Python (Suspicious activity)
+│   ├── support-agent/        # Python (Customer service)
+│   ├── reporting-agent/      # Python (Financial reports)
+│   ├── recurring-agent/      # Python (Automated payments)
+│   ├── risk-agent/           # Python (Risk scoring)
+│   └── liquidity-agent/      # Python (Treasury management)
+│
+├── packages/                  # Shared libraries
+│   ├── types/                # ✅ Shared TypeScript types
+│   ├── logger/               # ✅ Winston structured logging
+│   ├── database/             # ✅ Prisma schema (15 models)
+│   ├── config/               # ✅ Shared configs
+│   ├── arcium-sdk/           # Arcium integration
+│   ├── solana-utils/         # Solana helpers
+│   ├── ui/                   # Shared React components
+│   ├── queue/                # Bull job queue
+│   └── cache/                # Redis client
+│
+└── programs/                  # Solana smart contracts
+    ├── ninjapay-vault/       # Anchor escrow program
+    ├── reward-pool/          # Anchor loyalty staking
+    └── compliance-oracle/    # Anchor compliance checks
 ```
 
 ## 🛠️ Getting Started
@@ -102,13 +126,14 @@ JWT_SECRET="your-secret-key"
 
 ## 🚧 Development Status
 
-**Current Phase**: Day 1 - Foundation Setup ✅
+**Current Phase**: API Gateway Complete ✅
 
-- [x] Monorepo structure
-- [x] Shared packages (types, config, logger)
-- [ ] Database schema
-- [ ] API Gateway scaffold
-- [ ] Arcium integration (Days 3-6)
+- [x] Monorepo structure (Turborepo + PNPM)
+- [x] Shared packages (types, config, logger, database)
+- [x] Database schema (Prisma - 15 models)
+- [x] API Gateway (Express.js with auth, rate limiting, health checks)
+- [ ] Solana Web3.js integration
+- [ ] Arcium MPC integration (CRITICAL PATH)
 
 See [SPRINT_PLAN.md](./SPRINT_PLAN.md) for detailed timeline.
 
