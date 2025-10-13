@@ -1,5 +1,6 @@
 use actix_web::{post, get, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
+use crate::mpc::{InstructionLoader, InstructionInfo};
 
 #[derive(Deserialize)]
 pub struct InvokeComputationRequest {
@@ -132,6 +133,43 @@ async fn list_user_computations(
     }))
 }
 
+/// List available Arcium instructions
+#[get("/computation/instructions")]
+async fn list_instructions() -> impl Responder {
+    let loader = InstructionLoader::new("build".to_string());
+
+    let instructions: Vec<InstructionInfo> = vec![
+        "encrypted_transfer",
+        "batch_payroll",
+        "query_balance",
+        "validate_amount",
+        "add_values",
+    ]
+    .iter()
+    .filter_map(|name| loader.get_instruction_info(name))
+    .collect();
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "instructions": instructions
+    }))
+}
+
+/// Get specific instruction details
+#[get("/computation/instructions/{name}")]
+async fn get_instruction_details(
+    path: web::Path<String>,
+) -> impl Responder {
+    let name = path.into_inner();
+    let loader = InstructionLoader::new("build".to_string());
+
+    match loader.get_instruction_info(&name) {
+        Some(info) => HttpResponse::Ok().json(info),
+        None => HttpResponse::NotFound().json(serde_json::json!({
+            "error": "Instruction not found"
+        })),
+    }
+}
+
 fn generate_computation_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let timestamp = SystemTime::now()
@@ -145,5 +183,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(invoke_computation)
         .service(get_computation_status)
         .service(computation_callback)
-        .service(list_user_computations);
+        .service(list_user_computations)
+        .service(list_instructions)
+        .service(get_instruction_details);
 }

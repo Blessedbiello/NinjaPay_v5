@@ -126,14 +126,42 @@ JWT_SECRET="your-secret-key"
 
 ## 🚧 Development Status
 
-**Current Phase**: API Gateway Complete ✅
+**Current Phase**: Arcium MPC Integration Complete ✅
 
 - [x] Monorepo structure (Turborepo + PNPM)
 - [x] Shared packages (types, config, logger, database)
 - [x] Database schema (Prisma - 15 models)
 - [x] API Gateway (Express.js with auth, rate limiting, health checks)
-- [ ] Solana Web3.js integration
-- [ ] Arcium MPC integration (CRITICAL PATH)
+- [x] Solana Web3.js integration (connection, wallet, token, transaction utils)
+- [x] Arcium MPC integration
+  - [x] Encrypted instructions (transfer, batch payroll, balance query)
+  - [x] Rust microservice for MPC computations
+  - [x] TypeScript SDK for client-side encryption
+  - [x] Confidential payment flow APIs
+- [ ] MagicBlock ephemeral rollup integration
+- [ ] Frontend applications
+
+### Arcium Integration Highlights
+
+**Encrypted Instructions** (`services/arcium-service/build/`):
+- `encrypted_transfer.arcis` - Confidential P2P transfers
+- `batch_payroll.arcis` - Bulk payments (up to 3 recipients)
+- `query_balance.arcis` - Encrypted balance queries
+- `validate_amount.arcis` - Amount validation in MPC
+- `add_values.arcis` - Test MPC computation
+
+**Arcium Service APIs** (`services/arcium-service/src/api/`):
+- `POST /api/computation/invoke` - Queue MPC computation
+- `GET /api/computation/status` - Poll computation status
+- `POST /api/computation/callback` - Receive MPC results
+- `GET /api/computation/instructions` - List available instructions
+- `POST /api/account/setup` - Initialize confidential vault
+
+**Client SDK** (`packages/solana-utils/src/`):
+- `ArciumClient` - MPC network client
+- `EncryptionUtils` - Client-side encryption/decryption
+- `ConfidentialPaymentService` - High-level payment API
+- `VaultManager` - Confidential account management
 
 See [SPRINT_PLAN.md](./SPRINT_PLAN.md) for detailed timeline.
 
