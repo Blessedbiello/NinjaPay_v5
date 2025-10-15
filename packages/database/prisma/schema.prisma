@@ -111,6 +111,7 @@ model Merchant {
   webhooks         Webhook[]
   invoices         Invoice[]
   checkoutSessions CheckoutSession[]
+  apiKeys          ApiKey[]
 
   @@index([apiKey])
   @@index([email])
@@ -342,15 +343,18 @@ model PaymentIntent {
 model ApiKey {
   id          String    @id @default(cuid())
   merchantId  String
-  keyHash     String    @unique // Hashed API key
+  key         String    @unique // API key (will be hashed in production)
   name        String
+  active      Boolean   @default(true)
   permissions String[]  @default(["read", "write"])
   lastUsedAt  DateTime?
   expiresAt   DateTime?
   createdAt   DateTime  @default(now())
 
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
   @@index([merchantId])
-  @@index([keyHash])
+  @@index([key])
   @@map("api_keys")
 }
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/errorHandler';
+import { authenticateMerchant } from '../middleware/authenticate';
 import { PaymentIntentService } from '../services/payment-intent.service';
 import { ArciumClientService } from '../services/arcium-client.service';
 
@@ -36,14 +37,12 @@ const listPaymentIntentsSchema = z.object({
 // POST /v1/payment_intents - Create payment intent
 router.post(
   '/',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const body = createPaymentIntentSchema.parse(req.body);
 
-    // TODO: Get merchantId from auth middleware
-    const merchantId = 'temp-merchant-id';
-
     const paymentIntent = await paymentIntentService.create({
-      merchantId,
+      merchantId: req.merchantId!,
       recipient: body.recipient,
       amount: body.amount,
       currency: body.currency,
@@ -79,6 +78,7 @@ router.post(
 // GET /v1/payment_intents/:id - Retrieve payment intent
 router.get(
   '/:id',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const paymentIntent = await paymentIntentService.retrieve(req.params.id);
 
@@ -112,6 +112,7 @@ router.get(
 // PATCH /v1/payment_intents/:id - Update payment intent
 router.patch(
   '/:id',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const body = updatePaymentIntentSchema.parse(req.body);
 
@@ -146,14 +147,12 @@ router.patch(
 // GET /v1/payment_intents - List payment intents
 router.get(
   '/',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const query = listPaymentIntentsSchema.parse(req.query);
 
-    // TODO: Get merchantId from auth middleware
-    const merchantId = 'temp-merchant-id';
-
     const result = await paymentIntentService.list({
-      merchantId,
+      merchantId: req.merchantId!,
       customerId: query.customer_id,
       status: query.status,
       limit: query.limit,
@@ -190,6 +189,7 @@ router.get(
 // POST /v1/payment_intents/:id/confirm - Confirm payment intent
 router.post(
   '/:id/confirm',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const paymentIntent = await paymentIntentService.confirm(req.params.id);
 
@@ -215,6 +215,7 @@ router.post(
 // POST /v1/payment_intents/:id/cancel - Cancel payment intent
 router.post(
   '/:id/cancel',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const paymentIntent = await paymentIntentService.cancel(req.params.id);
 
