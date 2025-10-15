@@ -1,0 +1,100 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
+import {
+  LayoutDashboard,
+  CreditCard,
+  Package,
+  Users,
+  Link2,
+  Code,
+  Settings,
+  Wallet,
+  Shield,
+} from 'lucide-react';
+
+const navigation = [
+  { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Payments', href: '/dashboard/payments', icon: CreditCard },
+  { name: 'Products', href: '/dashboard/products', icon: Package },
+  { name: 'Customers', href: '/dashboard/customers', icon: Users },
+  { name: 'Payment Links', href: '/dashboard/payment-links', icon: Link2 },
+  { name: 'Developers', href: '/dashboard/developers', icon: Code },
+  { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+
+  return (
+    <div className="flex flex-col w-64 h-screen bg-dark-card border-r border-dark-border">
+      {/* Logo */}
+      <div className="flex items-center gap-3 h-16 px-6 border-b border-dark-border">
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
+          <Shield className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h1 className="text-lg font-bold gradient-text">NinjaPay</h1>
+          <p className="text-xs text-muted-foreground">Merchant Dashboard</p>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+        {navigation.map((item) => {
+          const isActive =
+            pathname === item.href ||
+            (item.href !== '/dashboard' && pathname.startsWith(item.href));
+
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              className={cn(
+                'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all',
+                isActive
+                  ? 'sidebar-active neon-purple'
+                  : 'text-muted-foreground hover:bg-primary-500/10 hover:text-primary-400'
+              )}
+            >
+              <item.icon className="w-5 h-5" />
+              {item.name}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Privacy Badge */}
+      <div className="p-4 border-t border-dark-border">
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className="w-4 h-4 text-primary-400" />
+            <span className="text-sm font-semibold text-primary-400">
+              Privacy Active
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            All amounts encrypted with Arcium MPC
+          </p>
+        </div>
+      </div>
+
+      {/* Account */}
+      <div className="p-4 border-t border-dark-border">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
+            <Wallet className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">Merchant Account</p>
+            <p className="text-xs text-muted-foreground truncate">
+              7xJ8...abc
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

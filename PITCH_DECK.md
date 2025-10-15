@@ -61,7 +61,7 @@ Every transaction on Solana broadcasts the exact amount to the world:
 - Send/receive confidential USDC payments
 - Amounts encrypted onchain (only sender/recipient see)
 - QR codes, contacts, transaction history
-- Sub-50ms transaction speed (via MagicBlock)
+- Arcium
 
 ### 2. Merchant Platform (Stripe Tools)
 - Payment link generation (no-code)
