@@ -1,5 +1,6 @@
 use redis::{aio::Connection, AsyncCommands, Client};
 use std::error::Error;
+use crate::mpc::types::{ComputationMetadata, ComputationStatus};
 
 /// Redis client for caching computation metadata and results
 pub struct RedisClient {
@@ -17,32 +18,54 @@ impl RedisClient {
         Ok(conn)
     }
 
+    /// Health check - PING command
+    pub async fn ping(&self) -> Result<(), Box<dyn Error>> {
+        let mut conn = self.get_connection().await?;
+        let pong: String = redis::cmd("PING").query_async(&mut conn).await?;
+        if pong == "PONG" {
+            Ok(())
+        } else {
+            Err(format!("Unexpected PING response: {}", pong).into())
+        }
+    }
+
     /// Store computation metadata
-    pub async fn store_computation(
+    pub async fn store_computation_metadata(
         &self,
-        computation_id: &str,
-        metadata: &str,
-        ttl_seconds: usize,
+        metadata: &ComputationMetadata,
     ) -> Result<(), Box<dyn Error>> {
         let mut conn = self.get_connection().await?;
-        let key = format!("computation:{}", computation_id);
+        let key = format!("comp:{}", metadata.computation_id);
 
-        conn.set_ex(&key, metadata, ttl_seconds as u64).await?;
+        // Serialize metadata to JSON
+        let json = serde_json::to_string(metadata)?;
+        conn.set_ex(&key, json, 3600).await?; // 1 hour TTL
 
-        log::debug!("Stored computation {} in Redis", computation_id);
+        // Add to user's computation set
+        let user_key = format!("user:{}:computations", metadata.user_pubkey);
+        conn.sadd(&user_key, &metadata.computation_id).await?;
+        conn.expire(&user_key, 86400).await?; // 24 hour TTL
+
+        log::debug!("Stored computation {} in Redis", metadata.computation_id);
         Ok(())
     }
 
     /// Retrieve computation metadata
-    pub async fn get_computation(
+    pub async fn get_computation_metadata(
         &self,
         computation_id: &str,
-    ) -> Result<Option<String>, Box<dyn Error>> {
+    ) -> Result<Option<ComputationMetadata>, Box<dyn Error>> {
         let mut conn = self.get_connection().await?;
-        let key = format!("computation:{}", computation_id);
+        let key = format!("comp:{}", computation_id);
 
-        let result: Option<String> = conn.get(&key).await?;
-        Ok(result)
+        let json: Option<String> = conn.get(&key).await?;
+        match json {
+            Some(data) => {
+                let metadata: ComputationMetadata = serde_json::from_str(&data)?;
+                Ok(Some(metadata))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Store computation result
@@ -77,26 +100,55 @@ impl RedisClient {
     pub async fn list_user_computations(
         &self,
         user_pubkey: &str,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
+        limit: usize,
+    ) -> Result<Vec<ComputationMetadata>, Box<dyn Error>> {
         let mut conn = self.get_connection().await?;
-        let pattern = format!("user:{}:comp:*", user_pubkey);
+        let user_key = format!("user:{}:computations", user_pubkey);
 
-        let keys: Vec<String> = conn.keys(&pattern).await?;
-        Ok(keys)
+        // Get computation IDs from set
+        let computation_ids: Vec<String> = conn.smembers(&user_key).await?;
+
+        // Fetch metadata for each computation
+        let mut computations = Vec::new();
+        for id in computation_ids.iter().take(limit) {
+            if let Some(metadata) = self.get_computation_metadata(id).await? {
+                computations.push(metadata);
+            }
+        }
+
+        // Sort by created_at (newest first)
+        computations.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        Ok(computations)
     }
 
     /// Update computation status
-    pub async fn update_status(
+    pub async fn update_computation_status(
         &self,
         computation_id: &str,
-        status: &str,
+        status: ComputationStatus,
     ) -> Result<(), Box<dyn Error>> {
-        let mut conn = self.get_connection().await?;
-        let key = format!("status:{}", computation_id);
+        // Get existing metadata
+        let mut metadata = self.get_computation_metadata(computation_id).await?
+            .ok_or("Computation not found")?;
 
-        conn.set_ex(&key, status, 86400).await?; // 24 hour TTL
+        // Update status
+        metadata.status = status.clone();
 
-        log::debug!("Updated status for computation {} to {}", computation_id, status);
+        // Set completed_at if finished
+        if matches!(status, ComputationStatus::Completed) {
+            metadata.completed_at = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+            );
+        }
+
+        // Store updated metadata
+        self.store_computation_metadata(&metadata).await?;
+
+        log::info!("Updated computation {} status to: {:?}", computation_id, status);
         Ok(())
     }
 

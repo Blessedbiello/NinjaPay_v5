@@ -3,7 +3,7 @@
  * Type-safe client for communicating with the API Gateway
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -197,8 +197,14 @@ class ApiClient {
     offset?: number;
     customerId?: string;
     status?: string;
+    decrypt?: boolean;
   }) {
-    const query = new URLSearchParams(params as any).toString();
+    const filteredParams = params
+      ? Object.fromEntries(
+          Object.entries(params).filter(([_, value]) => value !== undefined)
+        )
+      : {};
+    const query = new URLSearchParams(filteredParams as any).toString();
     return this.request<{ items: PaymentIntent[]; total: number }>(
       `/v1/payment_intents${query ? `?${query}` : ''}`
     );
@@ -241,7 +247,12 @@ class ApiClient {
     offset?: number;
     active?: boolean;
   }) {
-    const query = new URLSearchParams(params as any).toString();
+    const filteredParams = params
+      ? Object.fromEntries(
+          Object.entries(params).filter(([_, value]) => value !== undefined)
+        )
+      : {};
+    const query = new URLSearchParams(filteredParams as any).toString();
     return this.request<{ items: Product[]; total: number }>(
       `/v1/products${query ? `?${query}` : ''}`
     );
@@ -278,7 +289,12 @@ class ApiClient {
   }
 
   async listCustomers(params?: { limit?: number; offset?: number }) {
-    const query = new URLSearchParams(params as any).toString();
+    const filteredParams = params
+      ? Object.fromEntries(
+          Object.entries(params).filter(([_, value]) => value !== undefined)
+        )
+      : {};
+    const query = new URLSearchParams(filteredParams as any).toString();
     return this.request<{ items: Customer[]; total: number }>(
       `/v1/customers${query ? `?${query}` : ''}`
     );
@@ -342,7 +358,12 @@ class ApiClient {
   }
 
   async listPaymentLinks(params?: { limit?: number; offset?: number }) {
-    const query = new URLSearchParams(params as any).toString();
+    const filteredParams = params
+      ? Object.fromEntries(
+          Object.entries(params).filter(([_, value]) => value !== undefined)
+        )
+      : {};
+    const query = new URLSearchParams(filteredParams as any).toString();
     return this.request<{ items: PaymentLink[]; total: number }>(
       `/v1/payments/links${query ? `?${query}` : ''}`
     );

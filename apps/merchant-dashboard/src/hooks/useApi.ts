@@ -108,10 +108,11 @@ export function usePaymentIntents(params?: {
   offset?: number;
   customerId?: string;
   status?: string;
+  decrypt?: boolean;
 }) {
   return useApiList<PaymentIntent>(
     () => apiClient.listPaymentIntents(params),
-    [params]
+    [JSON.stringify(params)]
   );
 }
 
@@ -125,7 +126,10 @@ export function useProducts(params?: {
   offset?: number;
   active?: boolean;
 }) {
-  return useApiList<Product>(() => apiClient.listProducts(params), [params]);
+  return useApiList<Product>(
+    () => apiClient.listProducts(params),
+    [JSON.stringify(params)]
+  );
 }
 
 // Customers hooks
@@ -134,14 +138,17 @@ export function useCustomer(id: string) {
 }
 
 export function useCustomers(params?: { limit?: number; offset?: number }) {
-  return useApiList<Customer>(() => apiClient.listCustomers(params), [params]);
+  return useApiList<Customer>(
+    () => apiClient.listCustomers(params),
+    [JSON.stringify(params)]
+  );
 }
 
 // Payment Links hooks
 export function usePaymentLinks(params?: { limit?: number; offset?: number }) {
   return useApiList<PaymentLink>(
     () => apiClient.listPaymentLinks(params),
-    [params]
+    [JSON.stringify(params)]
   );
 }
 
@@ -372,4 +379,84 @@ export function useCancelPaymentIntent() {
   };
 
   return { cancel, loading, error };
+}
+
+// ============================================
+// DEVELOPER HOOKS
+// ============================================
+
+interface DeveloperMetrics {
+  apiCalls: {
+    total: number;
+    growth: string;
+  };
+  successRate: number;
+  avgResponseTime: number;
+  activeApiKeys: number;
+  totalApiKeys: number;
+  webhookDeliveries: {
+    total: number;
+    successRate: number;
+  };
+  integrationStatus: {
+    hasApiKey: boolean;
+    hasFirstCall: boolean;
+    hasWebhook: boolean;
+    hasWebhookDelivery: boolean;
+    hasTestPayment: boolean;
+    completionPercentage: number;
+  };
+}
+
+interface ApiActivity {
+  id: string;
+  timestamp: string;
+  method: string;
+  endpoint: string;
+  statusCode: number;
+  responseTime: number;
+  apiKeyName: string;
+  apiKeyLastChars: string;
+  errorMessage?: string;
+}
+
+interface ApiError {
+  id: string;
+  timestamp: string;
+  endpoint: string;
+  method: string;
+  statusCode: number;
+  errorMessage: string;
+}
+
+export function useDeveloperMetrics() {
+  return useApiResource<DeveloperMetrics>(
+    async () => {
+      const response = await fetch('/api/v1/developers/metrics');
+      return response.json();
+    },
+    []
+  );
+}
+
+export function useApiActivity(params?: { limit?: number }) {
+  return useApiList<ApiActivity>(
+    async () => {
+      const query = params ? `?limit=${params.limit}` : '';
+      const response = await fetch(`/api/v1/developers/activity${query}`);
+      return response.json();
+    },
+    [JSON.stringify(params)]
+  );
+}
+
+export function useApiErrors(params?: { limit?: number }) {
+  return useApiList<ApiError>(
+    async () => {
+      const query = params ? `?limit=${params.limit}` : '';
+      const response = await fetch(`/api/v1/developers/errors${query}`);
+      return response.json();
+    },
+    [JSON.stringify(params)]
+  );
 }

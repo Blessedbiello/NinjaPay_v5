@@ -8,9 +8,9 @@ crate-type = ["cdylib", "lib"]
 name = "ninjapay_vault"
 
 [dependencies]
-anchor-lang = "0.29.0"
-arcium-anchor = "0.3.0"
-arcis-imports = "0.3.0"
+anchor-lang = "0.31"
+arcium-anchor = "0.3"
+arcis-imports = "0.3"
 
 [features]
 no-entrypoint = []

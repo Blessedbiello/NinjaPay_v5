@@ -10,10 +10,41 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+interface DashboardMetrics {
+  totalRevenue: string;
+  transactionCount: number;
+  customerCount: number;
+  successRate: number;
+  revenueGrowth: string;
+  transactionGrowth: string;
+  customerGrowth: string;
+  recentPayments: any[];
+}
 
 export default function DashboardOverview() {
+  const router = useRouter();
   const [showRevenue, setShowRevenue] = useState(false);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/v1/dashboard/metrics')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setMetrics(data.data);
+        }
+      })
+      .catch((error) => {
+        console.error('Error fetching dashboard metrics:', error);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -25,93 +56,109 @@ export default function DashboardOverview() {
             Welcome back to your confidential payment dashboard
           </p>
         </div>
-        <button className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow flex items-center gap-2">
+        <button
+          onClick={() => router.push('/dashboard/payment-links')}
+          className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow flex items-center gap-2"
+        >
           <DollarSign className="w-4 h-4" />
           Create Payment
         </button>
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Revenue - Privacy Adapted */}
-        <div className="metric-card">
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-lg bg-primary-500/20 flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-primary-400" />
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="metric-card animate-pulse">
+              <div className="h-12 w-12 bg-dark-border rounded-lg mb-4"></div>
+              <div className="h-4 w-24 bg-dark-border rounded mb-2"></div>
+              <div className="h-8 w-32 bg-dark-border rounded mb-2"></div>
+              <div className="h-4 w-full bg-dark-border rounded"></div>
             </div>
-            <button
-              onClick={() => setShowRevenue(!showRevenue)}
-              className="p-2 rounded-lg hover:bg-primary-500/10 transition-colors"
-            >
-              {showRevenue ? (
-                <Eye className="w-4 h-4 text-primary-400" />
-              ) : (
-                <EyeOff className="w-4 h-4 text-muted-foreground" />
-              )}
-            </button>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Total Revenue</p>
-            {showRevenue ? (
-              <p className="text-3xl font-bold">$24,567.89</p>
-            ) : (
-              <div className="flex items-center gap-2">
-                <p className="text-3xl font-bold">••••••</p>
-                <span className="encrypted-badge text-xs">Encrypted</span>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Total Revenue - Privacy Adapted */}
+          <div className="metric-card">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-lg bg-primary-500/20 flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-primary-400" />
               </div>
-            )}
-            <div className="flex items-center gap-1 text-green-400 text-sm">
-              <ArrowUpRight className="w-4 h-4" />
-              <span>+12.5% from last month</span>
+              <button
+                onClick={() => setShowRevenue(!showRevenue)}
+                className="p-2 rounded-lg hover:bg-primary-500/10 transition-colors"
+              >
+                {showRevenue ? (
+                  <Eye className="w-4 h-4 text-primary-400" />
+                ) : (
+                  <EyeOff className="w-4 h-4 text-muted-foreground" />
+                )}
+              </button>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Total Revenue</p>
+              {showRevenue ? (
+                <p className="text-3xl font-bold">${metrics?.totalRevenue || '0.00'}</p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <p className="text-3xl font-bold">••••••</p>
+                  <span className="encrypted-badge text-xs">Encrypted</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1 text-green-400 text-sm">
+                <ArrowUpRight className="w-4 h-4" />
+                <span>+{metrics?.revenueGrowth || '0'}% from last month</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Total Transactions */}
-        <div className="metric-card">
-          <div className="w-12 h-12 rounded-lg bg-secondary-500/20 flex items-center justify-center mb-4">
-            <CreditCard className="w-6 h-6 text-secondary-400" />
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Transactions</p>
-            <p className="text-3xl font-bold">1,284</p>
-            <div className="flex items-center gap-1 text-green-400 text-sm">
-              <ArrowUpRight className="w-4 h-4" />
-              <span>+8.2% from last month</span>
+          {/* Total Transactions */}
+          <div className="metric-card">
+            <div className="w-12 h-12 rounded-lg bg-secondary-500/20 flex items-center justify-center mb-4">
+              <CreditCard className="w-6 h-6 text-secondary-400" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Transactions</p>
+              <p className="text-3xl font-bold">{metrics?.transactionCount?.toLocaleString() || '0'}</p>
+              <div className="flex items-center gap-1 text-green-400 text-sm">
+                <ArrowUpRight className="w-4 h-4" />
+                <span>+{metrics?.transactionGrowth || '0'}% from last month</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Active Customers */}
-        <div className="metric-card">
-          <div className="w-12 h-12 rounded-lg bg-accent-500/20 flex items-center justify-center mb-4">
-            <Users className="w-6 h-6 text-accent-400" />
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Active Customers</p>
-            <p className="text-3xl font-bold">847</p>
-            <div className="flex items-center gap-1 text-green-400 text-sm">
-              <ArrowUpRight className="w-4 h-4" />
-              <span>+15.3% from last month</span>
+          {/* Active Customers */}
+          <div className="metric-card">
+            <div className="w-12 h-12 rounded-lg bg-accent-500/20 flex items-center justify-center mb-4">
+              <Users className="w-6 h-6 text-accent-400" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Active Customers</p>
+              <p className="text-3xl font-bold">{metrics?.customerCount?.toLocaleString() || '0'}</p>
+              <div className="flex items-center gap-1 text-green-400 text-sm">
+                <ArrowUpRight className="w-4 h-4" />
+                <span>+{metrics?.customerGrowth || '0'}% from last month</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Success Rate */}
-        <div className="metric-card">
-          <div className="w-12 h-12 rounded-lg bg-green-500/20 flex items-center justify-center mb-4">
-            <TrendingUp className="w-6 h-6 text-green-400" />
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Success Rate</p>
-            <p className="text-3xl font-bold">98.7%</p>
-            <div className="flex items-center gap-1 text-green-400 text-sm">
-              <ArrowUpRight className="w-4 h-4" />
-              <span>+0.4% from last month</span>
+          {/* Success Rate */}
+          <div className="metric-card">
+            <div className="w-12 h-12 rounded-lg bg-green-500/20 flex items-center justify-center mb-4">
+              <TrendingUp className="w-6 h-6 text-green-400" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Success Rate</p>
+              <p className="text-3xl font-bold">{metrics?.successRate || '0'}%</p>
+              <div className="flex items-center gap-1 text-green-400 text-sm">
+                <ArrowUpRight className="w-4 h-4" />
+                <span>Stable performance</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -177,42 +224,70 @@ export default function DashboardOverview() {
             View all →
           </button>
         </div>
-        <div className="space-y-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between p-4 rounded-lg bg-dark-card border border-dark-border hover:border-primary-500/30 transition-all"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="font-medium">Payment #{1000 + i}</p>
-                  <p className="text-sm text-muted-foreground">
-                    customer@example.com
-                  </p>
-                </div>
+        {loading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="p-4 rounded-lg bg-dark-card border border-dark-border animate-pulse">
+                <div className="h-4 w-3/4 bg-dark-border rounded mb-2"></div>
+                <div className="h-3 w-1/2 bg-dark-border rounded"></div>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm text-muted-foreground">
-                      0x8c3d...
-                    </span>
-                    <span className="encrypted-badge text-xs">Encrypted</span>
+            ))}
+          </div>
+        ) : metrics?.recentPayments && metrics.recentPayments.length > 0 ? (
+          <div className="space-y-4">
+            {metrics.recentPayments.map((payment) => (
+              <div
+                key={payment.id}
+                className="flex items-center justify-between p-4 rounded-lg bg-dark-card border border-dark-border hover:border-primary-500/30 transition-all"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 text-white" />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    2 hours ago
-                  </p>
+                  <div>
+                    <p className="font-medium">
+                      {payment.product?.name || `Payment ${payment.id.substring(0, 8)}...`}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {payment.customer?.email || `${payment.recipient.substring(0, 8)}...`}
+                    </p>
+                  </div>
                 </div>
-                <span className="px-3 py-1 rounded-full text-xs font-medium status-success">
-                  Confirmed
-                </span>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm text-muted-foreground">
+                        {payment.amountCommitment.substring(0, 8)}...
+                      </span>
+                      <span className="encrypted-badge text-xs">Encrypted</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {new Date(payment.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    payment.status === 'CONFIRMED' ? 'status-success' :
+                    payment.status === 'PENDING' ? 'status-pending' :
+                    payment.status === 'FAILED' ? 'status-error' :
+                    'bg-dark-border text-muted-foreground'
+                  }`}>
+                    {payment.status}
+                  </span>
+                </div>
               </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-dark-border flex items-center justify-center">
+              <CreditCard className="w-8 h-8 text-muted-foreground" />
             </div>
-          ))}
-        </div>
+            <p className="text-muted-foreground">No transactions yet</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Create your first payment to get started
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

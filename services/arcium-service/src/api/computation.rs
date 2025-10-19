@@ -1,13 +1,15 @@
 use actix_web::{post, get, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
-use crate::mpc::{InstructionLoader, InstructionInfo};
+use crate::mpc::{InstructionLoader, InstructionInfo, ComputationRequest as MpcRequest, ComputationType};
+use crate::AppState;
 
 #[derive(Deserialize)]
 pub struct InvokeComputationRequest {
     pub computation_type: String,
-    pub encrypted_inputs: Vec<String>,
+    pub encrypted_inputs: Vec<String>, // Base64 or hex encoded
     pub user_pubkey: String,
     pub callback_url: Option<String>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -26,7 +28,7 @@ pub struct ComputationStatusQuery {
 pub struct ComputationStatusResponse {
     pub computation_id: String,
     pub status: String,
-    pub result: Option<String>,
+    pub result: Option<String>, // Base64 encoded
     pub error: Option<String>,
     pub created_at: u64,
     pub completed_at: Option<u64>,
@@ -35,37 +37,84 @@ pub struct ComputationStatusResponse {
 #[derive(Deserialize)]
 pub struct ComputationCallbackRequest {
     pub computation_id: String,
-    pub result: String,
+    pub result: String, // Base64 encoded
     pub signature: String,
 }
 
 /// Invoke a new MPC computation
 ///
 /// This endpoint accepts encrypted inputs and queues them for execution
-/// in the Arcium MPC cluster.
+/// in the Arcium MPC cluster or local simulator.
 #[post("/computation/invoke")]
 async fn invoke_computation(
+    app_state: web::Data<AppState>,
     req: web::Json<InvokeComputationRequest>,
 ) -> impl Responder {
     log::info!(
-        "Invoking computation type: {} for user: {}",
+        "📥 Received computation request: {} for user: {}",
         req.computation_type,
         req.user_pubkey
     );
 
-    // TODO: Implement actual Arcium computation invocation
-    // 1. Validate encrypted inputs
-    // 2. Queue computation using arcium-anchor::queue_computation()
-    // 3. Store computation metadata in Redis
-    // 4. Return computation ID
+    // Parse computation type
+    let computation_type = match req.computation_type.as_str() {
+        "confidential_transfer" | "encrypted_transfer" => ComputationType::ConfidentialTransfer,
+        "batch_payroll" => ComputationType::BatchPayroll,
+        "balance_query" | "query_balance" => ComputationType::BalanceQuery,
+        custom => ComputationType::Custom(custom.to_string()),
+    };
 
-    let computation_id = generate_computation_id();
+    // Decode encrypted inputs from base64/hex
+    let encrypted_inputs: Result<Vec<Vec<u8>>, _> = req
+        .encrypted_inputs
+        .iter()
+        .map(|input| {
+            // Try base64 first, then hex
+            base64::decode(input)
+                .or_else(|_| hex::decode(input))
+                .map_err(|e| format!("Invalid input encoding: {}", e))
+        })
+        .collect();
 
-    HttpResponse::Ok().json(InvokeComputationResponse {
-        computation_id: computation_id.clone(),
-        status: "queued".to_string(),
-        message: format!("Computation {} queued successfully", computation_id),
-    })
+    let encrypted_inputs = match encrypted_inputs {
+        Ok(inputs) => inputs,
+        Err(e) => {
+            log::error!("❌ Failed to decode inputs: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "invalid_input",
+                "message": e
+            }));
+        }
+    };
+
+    // Create MPC request
+    let mpc_request = MpcRequest {
+        computation_type,
+        encrypted_inputs,
+        user_pubkey: req.user_pubkey.clone(),
+        metadata: req.metadata.clone().unwrap_or(serde_json::json!({})),
+    };
+
+    // Invoke computation
+    match app_state.mpc_client.invoke_computation(mpc_request).await {
+        Ok(computation_id) => {
+            log::info!("✅ Computation queued: {}", computation_id);
+
+            HttpResponse::Ok().json(InvokeComputationResponse {
+                computation_id: computation_id.clone(),
+                status: "queued".to_string(),
+                message: format!("Computation {} queued successfully", computation_id),
+            })
+        }
+        Err(e) => {
+            log::error!("❌ Failed to invoke computation: {}", e);
+
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "computation_failed",
+                "message": format!("Failed to invoke computation: {}", e)
+            }))
+        }
+    }
 }
 
 /// Get computation status
@@ -73,26 +122,63 @@ async fn invoke_computation(
 /// Check the status of a previously invoked computation
 #[get("/computation/status")]
 async fn get_computation_status(
+    app_state: web::Data<AppState>,
     query: web::Query<ComputationStatusQuery>,
 ) -> impl Responder {
-    log::info!("Getting status for computation: {}", query.computation_id);
+    log::debug!("🔍 Status check for: {}", query.computation_id);
 
-    // TODO: Implement actual status lookup from Redis
-    // 1. Query Redis for computation metadata
-    // 2. Check Arcium cluster for current status
-    // 3. Return status and results if available
+    match app_state.mpc_client.get_computation_result(&query.computation_id).await {
+        Ok(Some(result)) => {
+            log::debug!("✅ Found result for: {}", query.computation_id);
 
-    HttpResponse::Ok().json(ComputationStatusResponse {
-        computation_id: query.computation_id.clone(),
-        status: "processing".to_string(),
-        result: None,
-        error: None,
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-        completed_at: None,
-    })
+            // Encode result as base64
+            let result_base64 = if !result.result.is_empty() {
+                Some(base64::encode(&result.result))
+            } else {
+                None
+            };
+
+            HttpResponse::Ok().json(ComputationStatusResponse {
+                computation_id: query.computation_id.clone(),
+                status: result.status,
+                result: result_base64,
+                error: result.error,
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                completed_at: Some(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                ),
+            })
+        }
+        Ok(None) => {
+            log::debug!("⏳ Computation still processing: {}", query.computation_id);
+
+            HttpResponse::Ok().json(ComputationStatusResponse {
+                computation_id: query.computation_id.clone(),
+                status: "processing".to_string(),
+                result: None,
+                error: None,
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                completed_at: None,
+            })
+        }
+        Err(e) => {
+            log::error!("❌ Failed to get computation status: {}", e);
+
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "status_check_failed",
+                "message": format!("Failed to check status: {}", e)
+            }))
+        }
+    }
 }
 
 /// Receive computation callback
@@ -101,36 +187,82 @@ async fn get_computation_status(
 /// when computations complete
 #[post("/computation/callback")]
 async fn computation_callback(
+    app_state: web::Data<AppState>,
     req: web::Json<ComputationCallbackRequest>,
 ) -> impl Responder {
-    log::info!("Received callback for computation: {}", req.computation_id);
+    log::info!("📥 Callback received for: {}", req.computation_id);
 
-    // TODO: Implement callback handling
-    // 1. Verify callback signature from Arcium
-    // 2. Store results in Redis
-    // 3. Trigger user notification if callback_url was provided
-    // 4. Update computation status
+    // Decode result from base64
+    let encrypted_result = match base64::decode(&req.result) {
+        Ok(result) => result,
+        Err(e) => {
+            log::error!("❌ Invalid result encoding: {}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "invalid_encoding",
+                "message": "Result must be base64 encoded"
+            }));
+        }
+    };
 
-    HttpResponse::Ok().json(serde_json::json!({
-        "status": "received",
-        "computation_id": req.computation_id
-    }))
+    // Handle callback
+    match app_state
+        .mpc_client
+        .handle_callback(
+            req.computation_id.clone(),
+            encrypted_result,
+            req.signature.clone(),
+        )
+        .await
+    {
+        Ok(result) => {
+            log::info!("✅ Callback processed: {}", req.computation_id);
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "status": "success",
+                "computation_id": result.computation_id
+            }))
+        }
+        Err(e) => {
+            log::error!("❌ Failed to process callback: {}", e);
+
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "callback_failed",
+                "message": format!("Failed to process callback: {}", e)
+            }))
+        }
+    }
 }
 
 /// List recent computations for a user
 #[get("/computation/list/{user_pubkey}")]
 async fn list_user_computations(
+    app_state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> impl Responder {
     let user_pubkey = path.into_inner();
-    log::info!("Listing computations for user: {}", user_pubkey);
+    log::debug!("📋 Listing computations for: {}", user_pubkey);
 
-    // TODO: Implement computation listing from Redis
-    // Query all computations for this user
+    match app_state
+        .mpc_client
+        .list_user_computations(&user_pubkey, 50)
+        .await
+    {
+        Ok(computations) => {
+            log::debug!("✅ Found {} computations", computations.len());
 
-    HttpResponse::Ok().json(serde_json::json!({
-        "computations": []
-    }))
+            HttpResponse::Ok().json(serde_json::json!({
+                "computations": computations
+            }))
+        }
+        Err(e) => {
+            log::error!("❌ Failed to list computations: {}", e);
+
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "list_failed",
+                "message": format!("Failed to list computations: {}", e)
+            }))
+        }
+    }
 }
 
 /// List available Arcium instructions
@@ -156,27 +288,17 @@ async fn list_instructions() -> impl Responder {
 
 /// Get specific instruction details
 #[get("/computation/instructions/{name}")]
-async fn get_instruction_details(
-    path: web::Path<String>,
-) -> impl Responder {
+async fn get_instruction_details(path: web::Path<String>) -> impl Responder {
     let name = path.into_inner();
     let loader = InstructionLoader::new("build".to_string());
 
     match loader.get_instruction_info(&name) {
         Some(info) => HttpResponse::Ok().json(info),
         None => HttpResponse::NotFound().json(serde_json::json!({
-            "error": "Instruction not found"
+            "error": "instruction_not_found",
+            "message": format!("Instruction '{}' not found", name)
         })),
     }
-}
-
-fn generate_computation_id() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-    format!("comp_{}", timestamp)
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {

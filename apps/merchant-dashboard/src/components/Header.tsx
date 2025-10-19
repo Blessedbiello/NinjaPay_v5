@@ -1,6 +1,7 @@
 'use client';
 
 import { Bell, Search } from 'lucide-react';
+import { WalletConnect } from '@/components/WalletConnect';
 
 export function Header() {
   return (
@@ -33,6 +34,9 @@ export function Header() {
               Solana Devnet
             </span>
           </div>
+
+          {/* Wallet Connect */}
+          <WalletConnect />
         </div>
       </div>
     </header>

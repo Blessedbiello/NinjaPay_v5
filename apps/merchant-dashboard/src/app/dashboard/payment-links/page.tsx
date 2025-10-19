@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus,
   Link2,
@@ -10,54 +10,56 @@ import {
   Eye,
   EyeOff,
   QrCode,
+  X,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
-// Mock data
-const mockLinks = [
-  {
-    id: 'link_abc123',
-    url: 'https://pay.ninjapay.xyz/web3-course',
-    productName: 'Web3 Development Course',
-    description: 'Complete Solana smart contract course',
-    amount: 299.99,
-    currency: 'USDC',
-    active: true,
-    views: 1247,
-    conversions: 45,
-    revenue: 13499.55,
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: 'link_def456',
-    url: 'https://pay.ninjapay.xyz/nft-template',
-    productName: 'NFT Marketplace Template',
-    description: 'Ready-to-deploy NFT marketplace',
-    amount: 499.99,
-    currency: 'USDC',
-    active: true,
-    views: 856,
-    conversions: 23,
-    revenue: 11499.77,
-    createdAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: 'link_ghi789',
-    url: 'https://pay.ninjapay.xyz/defi-audit',
-    productName: 'DeFi Protocol Audit',
-    description: 'Professional security audit',
-    amount: 2999.99,
-    currency: 'USDC',
-    active: false,
-    views: 342,
-    conversions: 8,
-    revenue: 23999.92,
-    createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
-  },
-];
-
 export default function PaymentLinksPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [selectedLinkUrl, setSelectedLinkUrl] = useState('');
+  const [products, setProducts] = useState<any[]>([]);
+  const [paymentLinks, setPaymentLinks] = useState<any[]>([]);
+  const [loadingLinks, setLoadingLinks] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    productId: '',
+    customUrl: '',
+    maxUses: '',
+    expiresAt: '',
+    description: '',
+  });
+
+  useEffect(() => {
+    // Fetch products for the dropdown
+    fetch('/api/v1/products')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setProducts(data.data.items);
+        }
+      })
+      .catch((err) => console.error('Error fetching products:', err));
+  }, []);
+
+  useEffect(() => {
+    // Fetch payment links from API
+    setLoadingLinks(true);
+    fetch('/api/v1/payment_links')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setPaymentLinks(data.data.items);
+        }
+      })
+      .catch((error) => {
+        console.error('Error fetching payment links:', error);
+      })
+      .finally(() => {
+        setLoadingLinks(false);
+      });
+  }, []);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -65,9 +67,59 @@ export default function PaymentLinksPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const totalViews = mockLinks.reduce((acc, link) => acc + link.views, 0);
-  const totalConversions = mockLinks.reduce((acc, link) => acc + link.conversions, 0);
-  const totalRevenue = mockLinks.reduce((acc, link) => acc + link.revenue, 0);
+  const openInNewTab = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const showQrCode = (url: string) => {
+    setSelectedLinkUrl(url);
+    setShowQrModal(true);
+  };
+
+  const handleCreateLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/v1/payment_links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: formData.productId,
+          customUrl: formData.customUrl || undefined,
+          maxUses: formData.maxUses ? parseInt(formData.maxUses) : undefined,
+          expiresAt: formData.expiresAt || undefined,
+          description: formData.description || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setShowCreateModal(false);
+        setFormData({
+          productId: '',
+          customUrl: '',
+          maxUses: '',
+          expiresAt: '',
+          description: '',
+        });
+        // Refresh the page or update the list
+        window.location.reload();
+      } else {
+        alert('Error: ' + data.error.message);
+      }
+    } catch (error) {
+      console.error('Error creating payment link:', error);
+      alert('Failed to create payment link');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalViews = paymentLinks.reduce((acc, link) => acc + (link.views || 0), 0);
+  const totalConversions = paymentLinks.reduce((acc, link) => acc + (link.conversions || 0), 0);
+  const totalRevenue = paymentLinks.reduce((acc, link) => acc + (link.revenue || 0), 0);
   const conversionRate = totalViews > 0 ? (totalConversions / totalViews) * 100 : 0;
 
   return (
@@ -80,7 +132,10 @@ export default function PaymentLinksPage() {
             Create no-code payment links to share anywhere
           </p>
         </div>
-        <button className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow flex items-center gap-2">
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow flex items-center gap-2"
+        >
           <Plus className="w-4 h-4" />
           Create Link
         </button>
@@ -95,7 +150,7 @@ export default function PaymentLinksPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Links</p>
-              <p className="text-2xl font-bold">{mockLinks.length}</p>
+              <p className="text-2xl font-bold">{paymentLinks.length}</p>
             </div>
           </div>
         </div>
@@ -155,7 +210,11 @@ export default function PaymentLinksPage() {
 
       {/* Payment Links */}
       <div className="space-y-4">
-        {mockLinks.map((link) => (
+        {loadingLinks ? (
+          <div className="glass-card text-center py-12">
+            <p className="text-muted-foreground">Loading payment links...</p>
+          </div>
+        ) : paymentLinks.map((link) => (
           <div key={link.id} className="glass-card card-hover">
             <div className="flex items-start gap-4">
               {/* Icon */}
@@ -192,6 +251,7 @@ export default function PaymentLinksPage() {
                       <button
                         onClick={() => copyToClipboard(link.url, link.id)}
                         className="p-1 hover:bg-primary-500/10 rounded transition-colors flex-shrink-0"
+                        title="Copy link"
                       >
                         {copiedId === link.id ? (
                           <span className="text-xs text-green-400">Copied!</span>
@@ -199,10 +259,18 @@ export default function PaymentLinksPage() {
                           <Copy className="w-4 h-4 text-muted-foreground" />
                         )}
                       </button>
-                      <button className="p-1 hover:bg-primary-500/10 rounded transition-colors flex-shrink-0">
+                      <button
+                        onClick={() => openInNewTab(link.url)}
+                        className="p-1 hover:bg-primary-500/10 rounded transition-colors flex-shrink-0"
+                        title="Open in new tab"
+                      >
                         <ExternalLink className="w-4 h-4 text-muted-foreground" />
                       </button>
-                      <button className="p-1 hover:bg-primary-500/10 rounded transition-colors flex-shrink-0">
+                      <button
+                        onClick={() => showQrCode(link.url)}
+                        className="p-1 hover:bg-primary-500/10 rounded transition-colors flex-shrink-0"
+                        title="Show QR code"
+                      >
                         <QrCode className="w-4 h-4 text-muted-foreground" />
                       </button>
                     </div>
@@ -221,15 +289,15 @@ export default function PaymentLinksPage() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Views</p>
-                    <p className="font-semibold">{link.views.toLocaleString()}</p>
+                    <p className="font-semibold">{(link.views || 0).toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Conversions</p>
-                    <p className="font-semibold">{link.conversions}</p>
+                    <p className="font-semibold">{link.conversions || 0}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Revenue</p>
-                    <p className="font-semibold">{formatCurrency(link.revenue)}</p>
+                    <p className="font-semibold">{formatCurrency(link.revenue || 0)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Created</p>
@@ -245,7 +313,7 @@ export default function PaymentLinksPage() {
       </div>
 
       {/* Empty State */}
-      {mockLinks.length === 0 && (
+      {!loadingLinks && paymentLinks.length === 0 && (
         <div className="glass-card text-center py-12">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary-500/20 flex items-center justify-center">
             <Link2 className="w-8 h-8 text-primary-400" />
@@ -254,9 +322,203 @@ export default function PaymentLinksPage() {
           <p className="text-muted-foreground mb-4">
             Create your first no-code payment link to start accepting payments
           </p>
-          <button className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow"
+          >
             Create Link
           </button>
+        </div>
+      )}
+
+      {/* Create Payment Link Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-card w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold gradient-text">Create Payment Link</h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="p-2 hover:bg-dark-card rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateLink} className="space-y-6">
+              {/* Product Selection */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Product <span className="text-red-400">*</span>
+                </label>
+                <select
+                  required
+                  value={formData.productId}
+                  onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
+                  className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg focus:outline-none focus:border-primary-500 transition-colors"
+                >
+                  <option value="">Select a product</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} - {formatCurrency(parseFloat(product.price))}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Select the product this link will sell
+                </p>
+              </div>
+
+              {/* Custom URL */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Custom URL Slug</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground text-sm">pay.ninjapay.xyz/</span>
+                  <input
+                    type="text"
+                    value={formData.customUrl}
+                    onChange={(e) => setFormData({ ...formData, customUrl: e.target.value })}
+                    placeholder="my-product"
+                    className="flex-1 px-4 py-3 bg-dark-card border border-dark-border rounded-lg focus:outline-none focus:border-primary-500 transition-colors font-mono text-sm"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Leave empty to auto-generate from product name
+                </p>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Description</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={3}
+                  placeholder="Optional description for this payment link"
+                  className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg focus:outline-none focus:border-primary-500 transition-colors resize-none"
+                />
+              </div>
+
+              {/* Max Uses */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Maximum Uses</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={formData.maxUses}
+                  onChange={(e) => setFormData({ ...formData, maxUses: e.target.value })}
+                  placeholder="Unlimited"
+                  className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg focus:outline-none focus:border-primary-500 transition-colors"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Leave empty for unlimited uses
+                </p>
+              </div>
+
+              {/* Expiration Date */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Expiration Date</label>
+                <input
+                  type="datetime-local"
+                  value={formData.expiresAt}
+                  onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
+                  className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg focus:outline-none focus:border-primary-500 transition-colors"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Leave empty for no expiration
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4 border-t border-dark-border">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 px-4 py-3 bg-dark-card hover:bg-dark-card/80 rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading || !formData.productId}
+                  className="flex-1 px-4 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Creating...' : 'Create Payment Link'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Modal */}
+      {showQrModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-card w-full max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold gradient-text">Payment Link QR Code</h2>
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="p-2 hover:bg-dark-card rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center">
+              {/* QR Code */}
+              <div className="bg-white p-4 rounded-lg mb-4">
+                <canvas id="qr-canvas" ref={(canvas) => {
+                  if (canvas && selectedLinkUrl) {
+                    import('qrcode').then((QRCode) => {
+                      QRCode.default.toCanvas(canvas, selectedLinkUrl, {
+                        width: 256,
+                        margin: 2,
+                        color: {
+                          dark: '#000000',
+                          light: '#FFFFFF',
+                        },
+                      });
+                    });
+                  }
+                }}></canvas>
+              </div>
+
+              {/* URL */}
+              <div className="w-full p-3 bg-dark-card rounded-lg mb-4">
+                <p className="font-mono text-xs text-muted-foreground text-center break-all">
+                  {selectedLinkUrl}
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => copyToClipboard(selectedLinkUrl, 'qr-modal')}
+                  className="flex-1 px-4 py-3 bg-primary-600/10 hover:bg-primary-600/20 text-primary-400 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  <Copy className="w-4 h-4" />
+                  {copiedId === 'qr-modal' ? 'Copied!' : 'Copy Link'}
+                </button>
+                <button
+                  onClick={() => {
+                    const canvas = document.getElementById('qr-canvas') as HTMLCanvasElement;
+                    if (canvas) {
+                      const url = canvas.toDataURL('image/png');
+                      const link = document.createElement('a');
+                      link.download = 'payment-link-qr.png';
+                      link.href = url;
+                      link.click();
+                    }
+                  }}
+                  className="flex-1 px-4 py-3 bg-secondary-600/10 hover:bg-secondary-600/20 text-secondary-400 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  <QrCode className="w-4 h-4" />
+                  Download QR
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

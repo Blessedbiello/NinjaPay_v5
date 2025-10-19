@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use serde::{Deserialize, Serialize};
 
 /// Arcium compiled instruction metadata
 pub struct CompiledInstruction {
@@ -100,7 +101,7 @@ impl InstructionLoader {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstructionInfo {
     pub name: String,
     pub description: String,

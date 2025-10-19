@@ -112,6 +112,7 @@ model Merchant {
   invoices         Invoice[]
   checkoutSessions CheckoutSession[]
   apiKeys          ApiKey[]
+  apiRequestLogs   ApiRequestLog[]
 
   @@index([apiKey])
   @@index([email])
@@ -119,22 +120,28 @@ model Merchant {
 }
 
 model PaymentLink {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   merchantId          String
-  url                 String   @unique
+  url                 String    @unique
   productName         String
   description         String?
-  amount              Decimal? @db.Decimal(20, 2)
-  currency            String   @default("USDC")
+  amount              Decimal?  @db.Decimal(20, 2)
+  currency            String    @default("USDC")
   imageUrl            String?
   successUrl          String?
   cancelUrl           String?
-  allowPromotionCodes Boolean  @default(false)
-  collectShipping     Boolean  @default(false)
-  active              Boolean  @default(true)
+  allowPromotionCodes Boolean   @default(false)
+  collectShipping     Boolean   @default(false)
+  active              Boolean   @default(true)
+  maxUses             Int?      // Maximum number of uses (null = unlimited)
+  usageCount          Int       @default(0) // Track actual usage
+  expiresAt           DateTime? // Expiration date (null = never expires)
+  views               Int       @default(0) // Number of times link was viewed
+  conversions         Int       @default(0) // Number of successful payments
+  revenue             Decimal   @default(0) @db.Decimal(20, 2) // Total revenue generated
   metadata            Json?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   merchant         Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   checkoutSessions CheckoutSession[]
@@ -351,11 +358,35 @@ model ApiKey {
   expiresAt   DateTime?
   createdAt   DateTime  @default(now())
 
-  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant     Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  requestLogs  ApiRequestLog[]
 
   @@index([merchantId])
   @@index([key])
   @@map("api_keys")
+}
+
+model ApiRequestLog {
+  id           String    @id @default(cuid())
+  merchantId   String
+  apiKeyId     String?
+  method       String    // GET, POST, PATCH, DELETE, etc.
+  endpoint     String    // /api/v1/payment_intents
+  statusCode   Int       // 200, 404, 500, etc.
+  responseTime Int       // milliseconds
+  ipAddress    String?
+  userAgent    String?
+  errorMessage String?   // If request failed
+  createdAt    DateTime  @default(now())
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  apiKey   ApiKey?  @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([merchantId])
+  @@index([apiKeyId])
+  @@index([createdAt])
+  @@index([statusCode])
+  @@map("api_request_logs")
 }
 
 // ============================================

@@ -117,16 +117,17 @@ export class ArciumClient {
 /**
  * Encryption utilities for Arcium MPC
  *
- * Client-side encryption of inputs before sending to MPC
+ * ⚠️ DEPRECATED: Use EncryptionHelper from './encryption' instead
+ * This class is kept for backward compatibility but should not be used for new code
+ *
+ * @deprecated Use EncryptionHelper for production-grade encryption
  */
 export class EncryptionUtils {
   /**
-   * Encrypt a value for MPC computation
-   *
-   * Note: In production, this would use the actual Arcium encryption scheme
-   * For now, this is a placeholder that encodes the value
+   * @deprecated Use EncryptionHelper.encryptU64() instead
    */
   static encryptValue(value: bigint | number): Buffer {
+    console.warn('EncryptionUtils.encryptValue is deprecated. Use EncryptionHelper from @ninjapay/solana-utils/encryption instead.');
     const numValue = typeof value === 'bigint' ? Number(value) : value;
     const buffer = Buffer.allocUnsafe(8);
     buffer.writeBigUInt64LE(BigInt(numValue));
@@ -134,9 +135,10 @@ export class EncryptionUtils {
   }
 
   /**
-   * Decrypt a value from MPC computation result
+   * @deprecated Use EncryptionHelper.decryptToU64() instead
    */
   static decryptValue(encryptedData: Buffer): bigint {
+    console.warn('EncryptionUtils.decryptValue is deprecated. Use EncryptionHelper from @ninjapay/solana-utils/encryption instead.');
     if (encryptedData.length < 8) {
       throw new Error('Invalid encrypted data length');
     }
@@ -144,14 +146,14 @@ export class EncryptionUtils {
   }
 
   /**
-   * Batch encrypt multiple values
+   * @deprecated Use EncryptionHelper for batch operations
    */
   static encryptBatch(values: (bigint | number)[]): Buffer[] {
     return values.map(v => this.encryptValue(v));
   }
 
   /**
-   * Batch decrypt multiple values
+   * @deprecated Use EncryptionHelper for batch operations
    */
   static decryptBatch(encryptedValues: Buffer[]): bigint[] {
     return encryptedValues.map(v => this.decryptValue(v));
