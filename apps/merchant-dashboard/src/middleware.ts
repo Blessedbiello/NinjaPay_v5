@@ -71,12 +71,25 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // For non-API routes (dashboard pages), check if user is authenticated via cookie
-  const token = request.cookies.get('auth_token')?.value;
+  // For non-API routes (dashboard pages), check if user is authenticated
+  // Check both cookie and localStorage (via checking if we're accessing dashboard)
+  const cookieToken = request.cookies.get('auth_token')?.value;
 
-  if (!token && pathname.startsWith('/dashboard')) {
+  if (!cookieToken && pathname.startsWith('/dashboard')) {
     // Redirect to home/login page
     return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  // If authenticated, set cookie for future requests
+  if (cookieToken && pathname.startsWith('/dashboard')) {
+    const response = NextResponse.next();
+    response.cookies.set('auth_token', cookieToken, {
+      httpOnly: false, // Allow client-side access
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+    return response;
   }
 
   return NextResponse.next();

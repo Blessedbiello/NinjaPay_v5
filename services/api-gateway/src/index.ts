@@ -17,6 +17,8 @@ import paymentIntentRoutes from './routes/payment-intents';
 import productRoutes from './routes/products';
 import customerRoutes from './routes/customers';
 import checkoutSessionRoutes from './routes/checkout-sessions';
+import arciumCallbacksRoutes from './routes/arcium-callbacks';
+import adminRoutes from './routes/admin';
 
 // Load environment variables
 dotenv.config();
@@ -48,12 +50,16 @@ app.use('/v1/auth', authRoutes);
 app.use('/v1/payments', paymentRoutes);
 app.use('/v1/balance', balanceRoutes);
 app.use('/v1/webhooks', webhookRoutes);
+app.use('/v1/arcium', arciumCallbacksRoutes);
 
 // sBTC Pay Integration - Stripe-like API
 app.use('/v1/payment_intents', paymentIntentRoutes);
 app.use('/v1/products', productRoutes);
 app.use('/v1/customers', customerRoutes);
 app.use('/v1/checkout_sessions', checkoutSessionRoutes);
+
+// Admin routes
+app.use('/v1/admin', adminRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);

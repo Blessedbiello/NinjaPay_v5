@@ -5,10 +5,15 @@
  * This service encrypts amounts, generates commitments, and creates ZK proofs.
  */
 
+import { randomBytes } from 'crypto';
+
 export interface EncryptedAmount {
   ciphertext: Buffer;
   commitment: string;
   proofs: Record<string, any>;
+  nonce: Buffer;
+  publicKey: Buffer;
+  computationId: string;
 }
 
 export class ArciumClientService {
@@ -43,10 +48,17 @@ export class ArciumClientService {
         validityProof: '0x...', // Proof of transaction validity
       };
 
+      const nonce = randomBytes(16);
+      const publicKey = randomBytes(32);
+      const computationId = `comp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
       return {
         ciphertext,
         commitment,
         proofs,
+        nonce,
+        publicKey,
+        computationId,
       };
     } catch (error) {
       console.error('Failed to encrypt amount:', error);

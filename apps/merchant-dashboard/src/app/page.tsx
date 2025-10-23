@@ -1,3 +1,6 @@
+'use client';
+
+import { WalletConnect } from '@/components/WalletConnect';
 import Link from 'next/link';
 
 export default function Home() {
@@ -14,11 +17,16 @@ export default function Home() {
         {/* Logo */}
         <div className="mb-8">
           <h1 className="text-6xl font-bold gradient-text mb-4">
-            NinjaPay
+            NinjaPay Dashboard
           </h1>
           <p className="text-xl text-muted-foreground text-center">
-            Confidential Payments for Solana
+            Connect your wallet to access the merchant dashboard
           </p>
+        </div>
+
+        {/* Wallet Connect */}
+        <div className="mb-12">
+          <WalletConnect />
         </div>
 
         {/* Features */}
@@ -90,20 +98,14 @@ export default function Home() {
           </div>
         </div>
 
-        {/* CTA Buttons */}
-        <div className="flex gap-4">
-          <Link
-            href="/dashboard"
-            className="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold transition-all btn-glow"
-          >
-            Open Dashboard
-          </Link>
-          <Link
-            href="/docs"
-            className="px-8 py-3 glass border border-primary-500/30 hover:border-primary-500/60 text-foreground rounded-lg font-semibold transition-all"
-          >
-            View Docs
-          </Link>
+        {/* Info Link */}
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground">
+            Looking for the public landing page?{' '}
+            <a href="http://localhost:3000" className="text-primary-500 hover:text-primary-600">
+              Visit NinjaPay.com
+            </a>
+          </p>
         </div>
 
         {/* Stats */}

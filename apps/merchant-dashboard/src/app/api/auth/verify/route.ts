@@ -4,12 +4,9 @@ import { PublicKey } from '@solana/web3.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 import { prisma } from '@ninjapay/database';
+import { consumeNonce } from '@/lib/auth/nonce-store';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-
-// Import nonce store from nonce route (in production, use Redis)
-// For now, we'll verify the signature directly
-const nonceStore = new Map<string, { nonce: string; timestamp: number }>();
 
 /**
  * POST /api/auth/verify
@@ -28,6 +25,22 @@ export async function POST(request: NextRequest) {
             code: 'INVALID_INPUT',
             message: 'Wallet address, signature, and message are required'
           }
+        },
+        { status: 400 }
+      );
+    }
+
+    // Verify nonce usage to prevent replay
+    const nonceValid = consumeNonce(walletAddress, message);
+
+    if (!nonceValid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'NONCE_INVALID',
+            message: 'Authentication request expired or invalid. Please try again.',
+          },
         },
         { status: 400 }
       );

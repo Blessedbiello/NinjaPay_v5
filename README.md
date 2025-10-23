@@ -222,3 +222,11 @@ This is a hackathon project. Contributions welcome after initial launch.
 ---
 
 Built with ❤️ for the Solana ecosystem
+
+### Admin Portal
+
+```bash
+pnpm dev --filter @ninjapay/admin-portal
+```
+
+Set `ADMIN_API_KEY` (and `NEXT_PUBLIC_ADMIN_API_KEY`) so the portal can access `/v1/admin/*` endpoints.

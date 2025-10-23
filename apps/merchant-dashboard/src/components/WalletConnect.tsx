@@ -5,6 +5,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useState } from 'react';
 import { Wallet, LogOut, User } from 'lucide-react';
 import bs58 from 'bs58';
+import { apiClient } from '@/lib/api-client';
 
 export function WalletConnect() {
   const { publicKey, signMessage, connected, disconnect } = useWallet();
@@ -19,6 +20,7 @@ export function WalletConnect() {
     if (token) {
       setAuthToken(token);
       setIsAuthenticated(true);
+      apiClient.setAuthToken(token);
       // Optionally fetch merchant info
       fetchMerchantInfo(token);
     }
@@ -92,12 +94,16 @@ export function WalletConnect() {
       localStorage.setItem('auth_token', token);
       localStorage.setItem('merchant_info', JSON.stringify(verifyData.data.user));
 
+      // Also set as cookie for middleware
+      document.cookie = `auth_token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+
       setAuthToken(token);
       setIsAuthenticated(true);
       setMerchantInfo(verifyData.data.user);
+      apiClient.setAuthToken(token);
 
-      // Refresh the page to update the dashboard with authenticated state
-      window.location.reload();
+      // Redirect to dashboard after successful authentication
+      window.location.href = '/dashboard';
     } catch (error) {
       console.error('Authentication error:', error);
       alert('Failed to authenticate. Please try again.');
@@ -107,11 +113,17 @@ export function WalletConnect() {
   };
 
   const handleLogout = () => {
+    // Clear localStorage
     localStorage.removeItem('auth_token');
     localStorage.removeItem('merchant_info');
+
+    // Clear cookie
+    document.cookie = 'auth_token=; path=/; max-age=0';
+
     setAuthToken(null);
     setIsAuthenticated(false);
     setMerchantInfo(null);
+    apiClient.setAuthToken(null);
     disconnect();
     window.location.href = '/';
   };

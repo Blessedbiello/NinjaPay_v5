@@ -56,6 +56,14 @@ enum TxStatus {
   CANCELLED
 }
 
+enum ComputationStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
 model Transaction {
   id               String   @id @default(cuid())
   userId           String
@@ -68,6 +76,13 @@ model Transaction {
   status           TxStatus
   sessionId        String? // MagicBlock session ID
   layer            String   @default("L1") // L1 or L2
+  encryptionNonce  Bytes?
+  encryptionPublicKey Bytes?
+  computationId    String?
+  computationStatus ComputationStatus? @default(QUEUED)
+  computationError String?
+  finalizedAt      DateTime?
+  finalizationSignature String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -327,6 +342,16 @@ model PaymentIntent {
   status           TxStatus
   sessionId        String? // MagicBlock session
   txSignature      String?
+  encryptionNonce  Bytes?
+  encryptionPublicKey Bytes?
+  clientPublicKey  Bytes?
+  computationId    String?
+  computationStatus ComputationStatus? @default(QUEUED)
+  computationError String?
+  finalizedAt      DateTime?
+  finalizationSignature String?
+  resultCiphertext Bytes?
+  resultNonce      Bytes?
   metadata         Json?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

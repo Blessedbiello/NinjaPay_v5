@@ -1,11 +1,10 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ProductService } from '../services/product.service';
+import { prisma } from '@ninjapay/database';
 
 const router: Router = Router();
-const prisma = new PrismaClient();
 const productService = new ProductService(prisma);
 
 // Validation schemas

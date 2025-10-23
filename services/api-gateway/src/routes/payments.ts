@@ -1,12 +1,11 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { authenticateUser, authenticateMerchant } from '../middleware/authenticate';
 import { ArciumClientService } from '../services/arcium-client.service';
+import { prisma } from '@ninjapay/database';
 
 const router: Router = Router();
-const prisma = new PrismaClient();
 const arcium = new ArciumClientService();
 
 // Validation schemas
@@ -45,7 +44,14 @@ router.post(
     }
 
     // Encrypt amount using Arcium
-    const { ciphertext, commitment, proofs } = await arcium.encryptAmount(body.amount);
+    const {
+      ciphertext,
+      commitment,
+      proofs,
+      nonce,
+      publicKey,
+      computationId,
+    } = await arcium.encryptAmount(body.amount);
 
     // Create transaction record
     const transaction = await prisma.transaction.create({
@@ -58,6 +64,10 @@ router.post(
         proofs: proofs,
         status: 'PENDING',
         layer: 'L1',
+        encryptionNonce: nonce,
+        encryptionPublicKey: publicKey,
+        computationId,
+        computationStatus: 'QUEUED',
       },
     });
 
@@ -73,7 +83,14 @@ router.post(
         recipient: transaction.recipient,
         amount: null, // Privacy: never return plaintext
         amount_commitment: transaction.amountCommitment,
-        encrypted_amount: transaction.encryptedAmount,
+        encrypted_amount: transaction.encryptedAmount.toString('base64'),
+        encryption_nonce: transaction.encryptionNonce ? transaction.encryptionNonce.toString('base64') : null,
+        encryption_public_key: transaction.encryptionPublicKey ? transaction.encryptionPublicKey.toString('base64') : null,
+        computation_id: transaction.computationId,
+        computation_status: transaction.computationStatus,
+        computation_error: transaction.computationError,
+        finalized_at: transaction.finalizedAt,
+        finalization_signature: transaction.finalizationSignature,
         status: transaction.status.toLowerCase(),
         description: body.description,
         metadata: body.metadata,
@@ -117,11 +134,18 @@ router.get(
         recipient: transaction.recipient,
         amount: null,
         amount_commitment: transaction.amountCommitment,
-        encrypted_amount: transaction.encryptedAmount,
+        encrypted_amount: transaction.encryptedAmount.toString('base64'),
+        encryption_nonce: transaction.encryptionNonce ? transaction.encryptionNonce.toString('base64') : null,
+        encryption_public_key: transaction.encryptionPublicKey ? transaction.encryptionPublicKey.toString('base64') : null,
+        computation_id: transaction.computationId,
+        computation_status: transaction.computationStatus,
+        computation_error: transaction.computationError,
         status: transaction.status.toLowerCase(),
         signature: transaction.signature,
         session_id: transaction.sessionId,
         layer: transaction.layer,
+        finalized_at: transaction.finalizedAt,
+        finalization_signature: transaction.finalizationSignature,
         created_at: transaction.createdAt,
         updated_at: transaction.updatedAt,
       },
@@ -167,6 +191,11 @@ router.get(
         recipient: tx.recipient,
         amount: null,
         amount_commitment: tx.amountCommitment,
+        encrypted_amount: tx.encryptedAmount.toString('base64'),
+        encryption_nonce: tx.encryptionNonce ? tx.encryptionNonce.toString('base64') : null,
+        encryption_public_key: tx.encryptionPublicKey ? tx.encryptionPublicKey.toString('base64') : null,
+        computation_id: tx.computationId,
+        computation_status: tx.computationStatus,
         status: tx.status.toLowerCase(),
         signature: tx.signature,
         layer: tx.layer,

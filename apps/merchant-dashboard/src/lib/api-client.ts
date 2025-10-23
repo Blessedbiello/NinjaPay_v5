@@ -22,7 +22,17 @@ export interface PaymentIntent {
   productId?: string;
   amount: number | null;
   amountCommitment?: string;
-  encryptedAmount?: Buffer;
+  encryptedAmount?: string | null;
+  encryptionNonce?: string | null;
+  encryptionPublicKey?: string | null;
+  clientPublicKey?: string | null;
+  computationId?: string | null;
+  computationStatus?: string | null;
+  computationError?: string | null;
+  finalizedAt?: string | null;
+  finalizationSignature?: string | null;
+  resultCiphertext?: string | null;
+  resultNonce?: string | null;
   currency: string;
   description?: string;
   status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED';
@@ -113,6 +123,7 @@ export interface ApiKey {
 class ApiClient {
   private baseUrl: string;
   private apiKey: string | null = null;
+  private authToken: string | null = null;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
@@ -120,6 +131,7 @@ class ApiClient {
     // Try to get API key from localStorage (client-side only)
     if (typeof window !== 'undefined') {
       this.apiKey = localStorage.getItem('ninjapay_api_key');
+      this.authToken = localStorage.getItem('auth_token');
     }
   }
 
@@ -130,20 +142,42 @@ class ApiClient {
     }
   }
 
+  setAuthToken(token: string | null) {
+    this.authToken = token;
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (token) {
+      localStorage.setItem('auth_token', token);
+    } else {
+      localStorage.removeItem('auth_token');
+    }
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
-      ...(this.apiKey && { Authorization: `Bearer ${this.apiKey}` }),
       ...options.headers,
     };
+
+    if (this.apiKey) {
+      headers['x-api-key'] = this.apiKey;
+    }
+
+    if (this.authToken) {
+      headers.Authorization = `Bearer ${this.authToken}`;
+    }
 
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
         headers,
+        credentials: 'include',
       });
 
       const data = await response.json();

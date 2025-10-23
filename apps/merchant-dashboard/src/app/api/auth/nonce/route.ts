@@ -1,20 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
-
-// In-memory nonce store (in production, use Redis with TTL)
-const nonceStore = new Map<string, { nonce: string; timestamp: number }>();
-
-// Cleanup old nonces every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  const fiveMinutes = 5 * 60 * 1000;
-
-  for (const [walletAddress, data] of nonceStore.entries()) {
-    if (now - data.timestamp > fiveMinutes) {
-      nonceStore.delete(walletAddress);
-    }
-  }
-}, 5 * 60 * 1000);
+import { storeNonce } from '@/lib/auth/nonce-store';
 
 /**
  * POST /api/auth/nonce
@@ -33,13 +19,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate a unique nonce
-    const nonce = `Sign this message to authenticate with NinjaPay:\n\nNonce: ${nanoid(32)}\nTimestamp: ${Date.now()}`;
+    const nonce = `Sign this message to authenticate with NinjaPay:\n\nNonce: ${nanoid(
+      32
+    )}\nTimestamp: ${Date.now()}`;
 
-    // Store nonce with timestamp
-    nonceStore.set(walletAddress, {
-      nonce,
-      timestamp: Date.now(),
-    });
+    storeNonce(walletAddress, nonce);
 
     return NextResponse.json({
       success: true,

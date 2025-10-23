@@ -1,15 +1,57 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/errorHandler';
 import { authenticateMerchant } from '../middleware/authenticate';
 import { PaymentIntentService } from '../services/payment-intent.service';
 import { ArciumClientService } from '../services/arcium-client.service';
+import { prisma } from '@ninjapay/database';
 
 const router: Router = Router();
-const prisma = new PrismaClient();
 const arcium = new ArciumClientService();
 const paymentIntentService = new PaymentIntentService(prisma, arcium);
+
+const serializePaymentIntent = (paymentIntent: any) => ({
+  id: paymentIntent.id,
+  merchant_id: paymentIntent.merchantId,
+  customer_id: paymentIntent.customerId,
+  product_id: paymentIntent.productId,
+  recipient: paymentIntent.recipient,
+  amount: null,
+  amount_commitment: paymentIntent.amountCommitment,
+  encrypted_amount: paymentIntent.encryptedAmount
+    ? paymentIntent.encryptedAmount.toString('base64')
+    : null,
+  encryption_nonce: paymentIntent.encryptionNonce
+    ? paymentIntent.encryptionNonce.toString('base64')
+    : null,
+  encryption_public_key: paymentIntent.encryptionPublicKey
+    ? paymentIntent.encryptionPublicKey.toString('base64')
+    : null,
+  client_public_key: paymentIntent.clientPublicKey
+    ? paymentIntent.clientPublicKey.toString('base64')
+    : null,
+  computation_id: paymentIntent.computationId,
+  computation_status: paymentIntent.computationStatus,
+  computation_error: paymentIntent.computationError,
+  finalized_at: paymentIntent.finalizedAt,
+  finalization_signature: paymentIntent.finalizationSignature,
+  result_ciphertext: paymentIntent.resultCiphertext
+    ? paymentIntent.resultCiphertext.toString('base64')
+    : null,
+  result_nonce: paymentIntent.resultNonce
+    ? paymentIntent.resultNonce.toString('base64')
+    : null,
+  currency: paymentIntent.currency,
+  status: paymentIntent.status.toLowerCase(),
+  description: paymentIntent.description,
+  tx_signature: paymentIntent.txSignature,
+  metadata: paymentIntent.metadata,
+  customer: paymentIntent.customer,
+  product: paymentIntent.product,
+  checkout_session: paymentIntent.checkoutSession,
+  created_at: paymentIntent.createdAt,
+  updated_at: paymentIntent.updatedAt,
+});
 
 // Validation schemas
 const createPaymentIntentSchema = z.object({
@@ -54,22 +96,7 @@ router.post(
 
     res.status(201).json({
       success: true,
-      data: {
-        id: paymentIntent.id,
-        merchant_id: paymentIntent.merchantId,
-        customer_id: paymentIntent.customerId,
-        product_id: paymentIntent.productId,
-        recipient: paymentIntent.recipient,
-        amount: null, // Privacy: never return plaintext amount
-        amount_commitment: paymentIntent.amountCommitment,
-        encrypted_amount: paymentIntent.encryptedAmount, // Only if user owns payment
-        currency: paymentIntent.currency,
-        status: paymentIntent.status.toLowerCase(),
-        description: paymentIntent.description,
-        metadata: paymentIntent.metadata,
-        created_at: paymentIntent.createdAt,
-        updated_at: paymentIntent.updatedAt,
-      },
+      data: serializePaymentIntent(paymentIntent),
       timestamp: Date.now(),
     });
   })
@@ -84,26 +111,7 @@ router.get(
 
     res.json({
       success: true,
-      data: {
-        id: paymentIntent.id,
-        merchant_id: paymentIntent.merchantId,
-        customer_id: paymentIntent.customerId,
-        product_id: paymentIntent.productId,
-        recipient: paymentIntent.recipient,
-        amount: null, // Privacy: never return plaintext amount
-        amount_commitment: paymentIntent.amountCommitment,
-        encrypted_amount: paymentIntent.encryptedAmount,
-        currency: paymentIntent.currency,
-        status: paymentIntent.status.toLowerCase(),
-        description: paymentIntent.description,
-        tx_signature: paymentIntent.txSignature,
-        metadata: paymentIntent.metadata,
-        customer: paymentIntent.customer,
-        product: paymentIntent.product,
-        checkout_session: paymentIntent.checkoutSession,
-        created_at: paymentIntent.createdAt,
-        updated_at: paymentIntent.updatedAt,
-      },
+      data: serializePaymentIntent(paymentIntent),
       timestamp: Date.now(),
     });
   })
@@ -123,22 +131,7 @@ router.patch(
 
     res.json({
       success: true,
-      data: {
-        id: paymentIntent.id,
-        merchant_id: paymentIntent.merchantId,
-        customer_id: paymentIntent.customerId,
-        product_id: paymentIntent.productId,
-        recipient: paymentIntent.recipient,
-        amount: null,
-        amount_commitment: paymentIntent.amountCommitment,
-        encrypted_amount: paymentIntent.encryptedAmount,
-        currency: paymentIntent.currency,
-        status: paymentIntent.status.toLowerCase(),
-        description: paymentIntent.description,
-        metadata: paymentIntent.metadata,
-        created_at: paymentIntent.createdAt,
-        updated_at: paymentIntent.updatedAt,
-      },
+      data: serializePaymentIntent(paymentIntent),
       timestamp: Date.now(),
     });
   })
@@ -161,20 +154,7 @@ router.get(
 
     res.json({
       success: true,
-      data: result.data.map((pi) => ({
-        id: pi.id,
-        merchant_id: pi.merchantId,
-        customer_id: pi.customerId,
-        product_id: pi.productId,
-        recipient: pi.recipient,
-        amount: null,
-        amount_commitment: pi.amountCommitment,
-        currency: pi.currency,
-        status: pi.status.toLowerCase(),
-        description: pi.description,
-        tx_signature: pi.txSignature,
-        created_at: pi.createdAt,
-      })),
+      data: result.data.map(serializePaymentIntent),
       pagination: {
         total: result.total,
         limit: query.limit,

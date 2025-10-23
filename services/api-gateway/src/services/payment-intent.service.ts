@@ -34,11 +34,21 @@ export class PaymentIntentService {
 
   async create(params: CreatePaymentIntentParams) {
     // 1. Encrypt amount using Arcium MPC
-    const { ciphertext, commitment, proofs } = await this.arcium.encryptAmount(
-      params.amount
-    );
+    const {
+      ciphertext,
+      commitment,
+      proofs,
+      nonce,
+      publicKey,
+      computationId,
+    } = await this.arcium.encryptAmount(params.amount);
 
     // 2. Create payment intent in database
+    const metadata = {
+      ...(params.metadata ?? {}),
+      arciumProofs: proofs,
+    };
+
     const paymentIntent = await this.db.paymentIntent.create({
       data: {
         merchantId: params.merchantId,
@@ -51,7 +61,11 @@ export class PaymentIntentService {
         amountCommitment: commitment,
         currency: params.currency,
         status: 'PENDING',
-        metadata: params.metadata || {},
+        metadata,
+        encryptionNonce: nonce,
+        encryptionPublicKey: publicKey,
+        computationId,
+        computationStatus: 'QUEUED',
       },
       include: {
         customer: true,
