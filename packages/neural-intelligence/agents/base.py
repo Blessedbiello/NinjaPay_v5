@@ -98,7 +98,7 @@ class NeuralAgent:
     def _setup_logger(self) -> logging.Logger:
         """Setup structured logger"""
         logger = logging.getLogger(f"neural.{self.name}")
-        logger.setLevel(getattr(logging, self.log_level))
+        logger.setLevel(getattr(logging, self.log_level.upper()))
 
         if not logger.handlers:
             handler = logging.StreamHandler()

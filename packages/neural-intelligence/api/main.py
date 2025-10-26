@@ -22,8 +22,9 @@ from .agent_manager import AgentManager
 load_dotenv()
 
 # Configure logging
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
+    level=getattr(logging, log_level),
     format='{"time":"%(asctime)s","service":"neural-api","level":"%(levelname)s","message":"%(message)s"}'
 )
 logger = logging.getLogger("neural-api")
