@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  neural-intelligence:
+    build: .
+    container_name: neural-intelligence-api
+    ports:
+      - "8003:8003"
+    environment:
+      - NEURAL_API_PORT=8003
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - MONGODB_URI=${MONGODB_URI}
+      - AGENT_SEED=${AGENT_SEED}
+      - AGENTVERSE_API_KEY=${AGENTVERSE_API_KEY}
+      - AGENT_MAILBOX_KEY=${AGENT_MAILBOX_KEY}
+      - LOG_LEVEL=info
+      - FRAUD_DETECTION_THRESHOLD=0.75
+      - COMPLIANCE_RISK_THRESHOLD=0.80
+    depends_on:
+      - redis
+    networks:
+      - ninjapay-network
+    restart: unless-stopped
+    volumes:
+      - ./knowledge:/app/knowledge:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: neural-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - ninjapay-network
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+networks:
+  ninjapay-network:
+    external: true
+
+volumes:
+  redis-data:
