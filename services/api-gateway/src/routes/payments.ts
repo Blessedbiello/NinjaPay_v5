@@ -6,7 +6,14 @@ import { ArciumClientService } from '../services/arcium-client.service';
 import { prisma } from '@ninjapay/database';
 
 const router: Router = Router();
-const arcium = new ArciumClientService();
+// Lazy-load Arcium service to ensure dotenv is loaded first
+let _arcium: ArciumClientService | null = null;
+function getArciumService(): ArciumClientService {
+  if (!_arcium) {
+    _arcium = new ArciumClientService();
+  }
+  return _arcium;
+}
 
 // Validation schemas
 const createPaymentSchema = z.object({
@@ -43,15 +50,17 @@ router.post(
       throw new AppError('User not found', 404);
     }
 
+    const amountValue = BigInt(Math.round(body.amount));
+
     // Encrypt amount using Arcium
-    const {
-      ciphertext,
-      commitment,
-      proofs,
-      nonce,
-      publicKey,
-      computationId,
-    } = await arcium.encryptAmount(body.amount);
+    const { ciphertext, commitment, proofs, nonce, publicKey } =
+      await getArciumService().encryptAmount(amountValue, {
+        userPubkey: user.walletAddress,
+        metadata: {
+          type: 'p2p_payment',
+          recipient: body.recipient,
+        },
+      });
 
     // Create transaction record
     const transaction = await prisma.transaction.create({
@@ -66,7 +75,7 @@ router.post(
         layer: 'L1',
         encryptionNonce: nonce,
         encryptionPublicKey: publicKey,
-        computationId,
+        computationId: null,
         computationStatus: 'QUEUED',
       },
     });
@@ -234,11 +243,34 @@ router.post(
       throw new AppError('Merchant authentication required', 401);
     }
 
+    const merchant = await prisma.merchant.findUnique({
+      where: { id: req.merchantId },
+      include: {
+        user: {
+          select: { walletAddress: true },
+        },
+      },
+    });
+
+    if (!merchant || !merchant.user?.walletAddress) {
+      throw new AppError('Merchant wallet not configured', 400);
+    }
+
     // TODO: Integrate with MagicBlock Payroll Service
     // For now, create pending transaction records
 
     const totalAmount = body.recipients.reduce((sum, r) => sum + r.amount, 0);
-    const { ciphertext, commitment } = await arcium.encryptAmount(totalAmount);
+    const totalAmountValue = BigInt(Math.round(totalAmount));
+    const { ciphertext, commitment } = await getArciumService().encryptAmount(
+      totalAmountValue,
+      {
+        userPubkey: merchant.user.walletAddress,
+        metadata: {
+          type: 'batch_payroll',
+          recipientCount: body.recipients.length,
+        },
+      }
+    );
 
     // Create PaymentIntent for batch
     const paymentIntent = await prisma.paymentIntent.create({

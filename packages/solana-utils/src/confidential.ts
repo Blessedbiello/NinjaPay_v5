@@ -1,5 +1,5 @@
-import { Connection, PublicKey, Keypair, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
-import { ArciumClient, EncryptionUtils, buildConfidentialTransfer, buildBatchPayroll } from './arcium';
+import { Connection, PublicKey, Keypair } from '@solana/web3.js';
+import { ArciumClient } from './arcium';
 
 /**
  * Confidential Payment Service
@@ -21,18 +21,31 @@ export class ConfidentialPaymentService {
   async sendConfidentialPayment(
     sender: Keypair,
     recipient: PublicKey,
-    amount: bigint
+    amount: bigint,
+    options: {
+      balance?: bigint;
+      metadata?: Record<string, unknown>;
+      callbackUrl?: string;
+      entityType?: string;
+      referenceId?: string;
+      userSignature?: string;
+    } = {}
   ): Promise<string> {
-    // Build computation request
-    const computationRequest = await buildConfidentialTransfer(
-      this.arciumClient,
-      sender.publicKey,
-      recipient,
-      amount
-    );
+    const balance = options.balance ?? amount * 10n;
 
-    // Queue computation to Arcium MPC
-    const computationId = await this.arciumClient.queueComputation(computationRequest);
+    const { computationId } = await this.arciumClient.queueConfidentialTransfer({
+      userPubkey: sender.publicKey,
+      balance,
+      amount,
+      metadata: {
+        recipient: recipient.toBase58(),
+        ...(options.metadata ?? {}),
+      },
+      callbackUrl: options.callbackUrl,
+      entityType: options.entityType,
+      referenceId: options.referenceId,
+      userSignature: options.userSignature,
+    });
 
     return computationId;
   }
@@ -42,17 +55,32 @@ export class ConfidentialPaymentService {
    */
   async sendBatchPayroll(
     payer: Keypair,
-    recipients: Array<{ address: PublicKey; amount: bigint }>
+    recipients: Array<{ address: PublicKey; amount: bigint }>,
+    options: {
+      balance?: bigint;
+      metadata?: Record<string, unknown>;
+      callbackUrl?: string;
+      entityType?: string;
+      referenceId?: string;
+      userSignature?: string;
+    } = {}
   ): Promise<string> {
-    // Build batch computation request
-    const computationRequest = await buildBatchPayroll(
-      this.arciumClient,
-      payer.publicKey,
-      recipients
-    );
+    const total = recipients.reduce((sum, item) => sum + item.amount, 0n);
+    const balance = options.balance ?? total * 2n;
 
-    // Queue computation to Arcium MPC
-    const computationId = await this.arciumClient.queueComputation(computationRequest);
+    const computationId = await this.arciumClient.queueBatchPayroll({
+      userPubkey: payer.publicKey,
+      balance,
+      amounts: recipients.map((r) => r.amount),
+      metadata: {
+        recipients: recipients.map((r) => r.address.toBase58()),
+        ...(options.metadata ?? {}),
+      },
+      callbackUrl: options.callbackUrl,
+      entityType: options.entityType,
+      referenceId: options.referenceId,
+      userSignature: options.userSignature,
+    });
 
     return computationId;
   }
@@ -73,24 +101,15 @@ export class ConfidentialPaymentService {
     computationId: string,
     timeoutMs: number = 30000
   ): Promise<Buffer | null> {
-    const startTime = Date.now();
+    const result = await this.arciumClient.waitForCompletion(computationId, {
+      timeoutMs,
+    });
 
-    while (Date.now() - startTime < timeoutMs) {
-      const result = await this.arciumClient.getComputationResult(computationId);
-
-      if (result?.status === 'completed') {
-        return result.result || null;
-      }
-
-      if (result?.status === 'failed') {
-        throw new Error(`Computation failed: ${result.error}`);
-      }
-
-      // Wait 1 second before polling again
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    if (result.status === 'failed') {
+      throw new Error(result.error ?? 'Computation failed');
     }
 
-    throw new Error('Computation timed out');
+    return result.result ?? null;
   }
 }
 
@@ -132,38 +151,5 @@ export class VaultManager {
     // TODO: Build initialize vault transaction
     // This would create the vault PDA and initialize encrypted balance
     throw new Error('Not implemented - requires Anchor program deployment');
-  }
-}
-
-/**
- * Helper functions for confidential payments
- */
-export class ConfidentialPaymentUtils {
-  /**
-   * Encrypt amount for confidential transfer
-   */
-  static encryptAmount(amount: bigint): Buffer {
-    return EncryptionUtils.encryptValue(amount);
-  }
-
-  /**
-   * Decrypt amount from computation result
-   */
-  static decryptAmount(encryptedAmount: Buffer): bigint {
-    return EncryptionUtils.decryptValue(encryptedAmount);
-  }
-
-  /**
-   * Format encrypted amount for display
-   */
-  static formatEncryptedAmount(encryptedAmount: Buffer): string {
-    return `0x${encryptedAmount.toString('hex').substring(0, 16)}...`;
-  }
-
-  /**
-   * Validate payment amount
-   */
-  static validateAmount(amount: bigint, maxAmount: bigint = BigInt(1000000000000)): boolean {
-    return amount > BigInt(0) && amount <= maxAmount;
   }
 }

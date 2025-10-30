@@ -11,8 +11,14 @@ import json
 
 from uagents import Context
 from agents.base import NeuralAgent, AgentResponse
-from agents.protocols import FraudAnalysisRequest, FraudAnalysisResponse
+from agents.protocols import (
+    FraudAnalysisRequest,
+    FraudAnalysisResponse,
+    FraudScoreQuery,
+    FraudScoreResponse,
+)
 from knowledge import get_knowledge_base
+import uuid
 
 # ML imports (optional - graceful degradation if not available)
 try:
@@ -37,7 +43,10 @@ class FraudAgent(NeuralAgent):
     def __init__(self):
         super().__init__(
             name="FraudAgent",
-            seed=os.getenv("AGENT_SEED", "fraud_agent_seed_phrase"),
+            seed=os.getenv(
+                "FRAUD_AGENT_SEED",
+                os.getenv("AGENT_SEED", "fraud_agent_seed_phrase")
+            ),
             port=int(os.getenv("FRAUD_AGENT_PORT", 8102)),
             endpoint=[f"http://localhost:{os.getenv('FRAUD_AGENT_PORT', 8102)}/submit"],
             mailbox=os.getenv("AGENT_MAILBOX_KEY"),
@@ -53,6 +62,14 @@ class FraudAgent(NeuralAgent):
 
         # Register message handlers
         self.register_message_handler("fraud_analysis", self.handle_fraud_analysis)
+
+        # Register inter-agent query handler
+        @self.agent.on_message(model=FraudScoreQuery)
+        async def handle_fraud_query(ctx: Context, sender: str, msg: FraudScoreQuery):
+            """Handle fraud score queries from other agents"""
+            self.logger.info(f"Received fraud query from {sender} for transaction {msg.transaction_id}")
+            response = await self.get_fraud_score(msg.transaction_id, msg.user_id, msg.include_factors)
+            await ctx.send(sender, response)
 
         # Performance metrics
         self.analyses_performed = 0
@@ -249,9 +266,16 @@ class FraudAgent(NeuralAgent):
 
         # Add historical context
         if tx_history:
-            features["time_since_last_tx"] = (
-                datetime.utcnow() - datetime.fromisoformat(tx_history[0]["created_at"])
-            ).total_seconds() / 60  # Minutes
+            last_created_at = tx_history[0].get("created_at")
+            if isinstance(last_created_at, str):
+                last_created_dt = datetime.fromisoformat(last_created_at)
+            else:
+                last_created_dt = last_created_at
+
+            if isinstance(last_created_dt, datetime):
+                features["time_since_last_tx"] = (
+                    datetime.utcnow() - last_created_dt
+                ).total_seconds() / 60  # Minutes
 
         return features
 
@@ -462,7 +486,14 @@ class FraudAgent(NeuralAgent):
             feature_vectors = []
             for tx in transactions:
                 # Simplified feature extraction for training
-                hour = datetime.fromisoformat(tx["created_at"]).hour
+                created_at = tx.get("created_at")
+                if isinstance(created_at, str):
+                    created_dt = datetime.fromisoformat(created_at)
+                else:
+                    created_dt = created_at
+
+                hour = created_dt.hour if isinstance(created_dt, datetime) else 0
+
                 feature_vectors.append([
                     1000.0,  # Placeholder amount
                     500.0,   # Placeholder avg
@@ -526,6 +557,65 @@ class FraudAgent(NeuralAgent):
         if message_type == "fraud_analysis":
             return await self.analyze_fraud(data)
         return {"error": "Unknown message type"}
+
+    async def get_fraud_score(
+        self,
+        transaction_id: str,
+        user_id: str,
+        include_factors: bool = True
+    ) -> FraudScoreResponse:
+        """
+        Get fraud score for inter-agent queries
+        Enables other agents to query fraud risk without full analysis
+        """
+        self.logger.info(f"Computing fraud score for transaction {transaction_id}")
+
+        try:
+            # Build minimal transaction data for analysis
+            transaction_data = {
+                "transaction_id": transaction_id,
+                "user_id": user_id,
+                "amount_commitment": "simulated_commitment",  # Would be real in production
+                "transaction_pattern": {
+                    "new_device": False,
+                    "new_location": False,
+                    "unusual_time": False
+                }
+            }
+
+            # Perform fraud analysis
+            result = await self.analyze_fraud(transaction_data)
+
+            # Build response with factors if requested
+            factors = []
+            if include_factors and "factors" in result:
+                factors = result["factors"]
+
+            return FraudScoreResponse(
+                query_id=str(uuid.uuid4()),
+                transaction_id=transaction_id,
+                fraud_probability=result.get("fraud_probability", 0.5),
+                fraud_type=result.get("fraud_type"),
+                factors=factors if include_factors else [],
+                recommendation=result.get("action_recommended", "review"),
+                confidence=result.get("confidence", 0.7),
+                responding_agent=self.name,
+                timestamp=datetime.utcnow()
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error computing fraud score: {e}")
+            return FraudScoreResponse(
+                query_id=str(uuid.uuid4()),
+                transaction_id=transaction_id,
+                fraud_probability=0.5,
+                fraud_type="unknown",
+                factors=[{"error": str(e)}] if include_factors else [],
+                recommendation="review",
+                confidence=0.0,
+                responding_agent=self.name,
+                timestamp=datetime.utcnow()
+            )
 
     async def get_metrics(self) -> Dict[str, Any]:
         """Get agent performance metrics"""

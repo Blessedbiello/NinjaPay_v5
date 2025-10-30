@@ -28,38 +28,54 @@ async fn main() -> io::Result<()> {
 
     // Load configuration from environment
     let port = std::env::var("ARCIUM_SERVICE_PORT")
-        .unwrap_or_else(|_| "8001".to_string())
+        .unwrap_or_else(|_| "8002".to_string())
         .parse::<u16>()
         .expect("Invalid port");
 
-    let redis_url = std::env::var("REDIS_URL")
-        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let redis_url =
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
 
-    let mpc_mode = std::env::var("MPC_MODE")
-        .unwrap_or_else(|_| "local".to_string());
+    let mpc_mode = std::env::var("MPC_MODE").unwrap_or_else(|_| "local".to_string());
 
     // Initialize Redis client
     log::info!("📦 Connecting to Redis: {}", redis_url);
-    let redis_client = Arc::new(
-        RedisClient::new(&redis_url)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Redis connection failed: {}", e)))?
-    );
+    let redis_client = Arc::new(RedisClient::new(&redis_url).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("Redis connection failed: {}", e),
+        )
+    })?);
 
     // Initialize MPC client based on mode
     let mpc_client = if mpc_mode.to_lowercase() == "cluster" {
-        let cluster_address = std::env::var("ARCIUM_CLUSTER_ADDRESS")
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "ARCIUM_CLUSTER_ADDRESS not set for cluster mode"))?;
-        let program_id = std::env::var("ARCIUM_PROGRAM_ID")
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "ARCIUM_PROGRAM_ID not set for cluster mode"))?;
+        let cluster_address = std::env::var("ARCIUM_CLUSTER_ADDRESS").map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                "ARCIUM_CLUSTER_ADDRESS not set for cluster mode",
+            )
+        })?;
+        let program_id = std::env::var("ARCIUM_PROGRAM_ID").map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                "ARCIUM_PROGRAM_ID not set for cluster mode",
+            )
+        })?;
 
-        MpcClient::new_cluster(redis_client, cluster_address, program_id)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to initialize MPC client: {}", e)))?
+        MpcClient::new_cluster(redis_client, cluster_address, program_id).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to initialize MPC client: {}", e),
+            )
+        })?
     } else {
-        let build_path = std::env::var("ARCIUM_BUILD_PATH")
-            .unwrap_or_else(|_| "build".to_string());
+        let build_path = std::env::var("ARCIUM_BUILD_PATH").unwrap_or_else(|_| "build".to_string());
 
-        MpcClient::new_local(redis_client, build_path)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Failed to initialize MPC client: {}", e)))?
+        MpcClient::new_local(redis_client, build_path).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to initialize MPC client: {}", e),
+            )
+        })?
     };
 
     let mpc_client = Arc::new(mpc_client);

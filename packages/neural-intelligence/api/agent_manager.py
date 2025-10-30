@@ -51,13 +51,28 @@ class AgentManager:
         """Stop all agents"""
         logger.info("Stopping all agents...")
 
+        # Signal agents to stop gracefully
+        for name, agent in self.agents.items():
+            if hasattr(agent, "agent") and hasattr(agent.agent, "stop"):
+                try:
+                    await asyncio.to_thread(agent.agent.stop)
+                    logger.info(f"Sent stop signal to {name} agent")
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to stop agent cleanly",
+                        extra={"agent": name, "error": str(exc)}
+                    )
+
         # Cancel all agent tasks
         for name, task in self.agent_tasks.items():
-            task.cancel()
+            if not task.done():
+                task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 logger.info(f"Stopped {name} agent")
+            except Exception as exc:
+                logger.error(f"Error stopping agent {name}: {exc}", exc_info=True)
 
         self.agents.clear()
         self.agent_tasks.clear()

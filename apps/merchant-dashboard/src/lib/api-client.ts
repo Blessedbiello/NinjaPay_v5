@@ -215,6 +215,8 @@ class ApiClient {
     productId?: string;
     description?: string;
     metadata?: Record<string, any>;
+    recipient?: string;
+    userSignature?: string;
   }) {
     return this.request<PaymentIntent>('/v1/payment_intents', {
       method: 'POST',

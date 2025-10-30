@@ -30,7 +30,7 @@ Update `.env`:
 DATABASE_URL="postgresql://user:password@localhost:5432/ninjapay"
 SOLANA_RPC_URL="https://api.devnet.solana.com"
 JWT_SECRET="your-secure-secret-key"
-NEXT_PUBLIC_API_URL="http://localhost:3000"
+NEXT_PUBLIC_API_URL="http://localhost:8001"
 ```
 
 ### Database Setup
@@ -231,11 +231,11 @@ programs/
 # Required
 DATABASE_URL="postgresql://..."
 JWT_SECRET="your-secret"
-NEXT_PUBLIC_API_URL="http://localhost:3000"
+NEXT_PUBLIC_API_URL="http://localhost:8001"
 
 # Optional
 SOLANA_RPC_URL="https://api.devnet.solana.com"
-ARCIUM_API_URL="http://localhost:8001"
+ARCIUM_API_URL="http://localhost:8002"
 MAGICBLOCK_RPC_URL="https://devnet.magicblock.app"
 ```
 

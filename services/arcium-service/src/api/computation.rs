@@ -1,7 +1,9 @@
-use actix_web::{post, get, web, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
-use crate::mpc::{InstructionLoader, InstructionInfo, ComputationRequest as MpcRequest, ComputationType};
+use crate::mpc::{
+    ComputationRequest as MpcRequest, ComputationType, InstructionInfo, InstructionLoader,
+};
 use crate::AppState;
+use actix_web::{get, post, web, HttpResponse, Responder};
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct InvokeComputationRequest {
@@ -9,7 +11,10 @@ pub struct InvokeComputationRequest {
     pub encrypted_inputs: Vec<String>, // Base64 or hex encoded
     pub user_pubkey: String,
     pub callback_url: Option<String>,
+    pub entity_type: Option<String>,
+    pub reference_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub user_signature: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -88,11 +93,29 @@ async fn invoke_computation(
     };
 
     // Create MPC request
+    let mut metadata = req
+        .metadata
+        .clone()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !metadata.is_object() {
+        metadata = serde_json::json!({});
+    }
+    if let Some(entity_type) = &req.entity_type {
+        metadata["entity_type"] = serde_json::Value::String(entity_type.clone());
+    }
+    if let Some(reference_id) = &req.reference_id {
+        metadata["reference_id"] = serde_json::Value::String(reference_id.clone());
+    }
+
     let mpc_request = MpcRequest {
         computation_type,
         encrypted_inputs,
         user_pubkey: req.user_pubkey.clone(),
-        metadata: req.metadata.clone().unwrap_or(serde_json::json!({})),
+        metadata,
+        callback_url: req.callback_url.clone(),
+        entity_type: req.entity_type.clone(),
+        reference_id: req.reference_id.clone(),
+        user_signature: req.user_signature.clone(),
     };
 
     // Invoke computation
@@ -127,7 +150,11 @@ async fn get_computation_status(
 ) -> impl Responder {
     log::debug!("🔍 Status check for: {}", query.computation_id);
 
-    match app_state.mpc_client.get_computation_result(&query.computation_id).await {
+    match app_state
+        .mpc_client
+        .get_computation_result(&query.computation_id)
+        .await
+    {
         Ok(Some(result)) => {
             log::debug!("✅ Found result for: {}", query.computation_id);
 

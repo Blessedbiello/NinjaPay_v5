@@ -13,8 +13,11 @@ from agents.base import NeuralAgent, AgentResponse
 from agents.protocols import (
     ComplianceCheckRequest,
     ComplianceCheckResponse,
+    RiskScoreQuery,
+    RiskScoreResponse,
 )
 from knowledge import get_knowledge_base
+import uuid
 
 
 class ComplianceAgent(NeuralAgent):
@@ -31,7 +34,10 @@ class ComplianceAgent(NeuralAgent):
     def __init__(self):
         super().__init__(
             name="ComplianceAgent",
-            seed=os.getenv("AGENT_SEED", "compliance_agent_seed_phrase"),
+            seed=os.getenv(
+                "COMPLIANCE_AGENT_SEED",
+                os.getenv("AGENT_SEED", "compliance_agent_seed_phrase")
+            ),
             port=int(os.getenv("COMPLIANCE_AGENT_PORT", 8100)),
             endpoint=[f"http://localhost:{os.getenv('COMPLIANCE_AGENT_PORT', 8100)}/submit"],
             mailbox=os.getenv("AGENT_MAILBOX_KEY"),
@@ -43,6 +49,14 @@ class ComplianceAgent(NeuralAgent):
 
         # Register message handlers
         self.register_message_handler("compliance_check", self.handle_compliance_check)
+
+        # Register inter-agent query handler
+        @self.agent.on_message(model=RiskScoreQuery)
+        async def handle_risk_query(ctx: Context, sender: str, msg: RiskScoreQuery):
+            """Handle risk score queries from other agents"""
+            self.logger.info(f"Received risk query from {sender} for {msg.entity_id}")
+            response = await self.get_risk_score(msg.entity_type, msg.entity_id, msg.context)
+            await ctx.send(sender, response)
 
         # Performance metrics
         self.checks_performed = 0
@@ -504,6 +518,77 @@ class ComplianceAgent(NeuralAgent):
                 return await self.check_merchant_kyc(request.data)
 
         return {"error": "Unknown message type"}
+
+    async def get_risk_score(
+        self,
+        entity_type: str,
+        entity_id: str,
+        context: Dict[str, Any]
+    ) -> RiskScoreResponse:
+        """
+        Get risk score for inter-agent queries
+        This enables other agents to ask ComplianceAgent about risk assessment
+        """
+        self.logger.info(f"Computing risk score for {entity_type} {entity_id}")
+
+        try:
+            if entity_type == "transaction":
+                # Get transaction details
+                transaction_data = context.get("transaction_data", {})
+                result = await self.check_transaction_compliance(transaction_data)
+
+                return RiskScoreResponse(
+                    query_id=context.get("query_id", str(uuid.uuid4())),
+                    entity_id=entity_id,
+                    risk_score=result.get("risk_score", 0.5),
+                    risk_level=result.get("risk_level", "medium"),
+                    factors=result.get("violations", []),
+                    confidence=0.85,
+                    responding_agent=self.name,
+                    timestamp=datetime.utcnow()
+                )
+
+            elif entity_type == "merchant":
+                # Get merchant KYC status
+                merchant_data = context.get("merchant_data", {})
+                result = await self.check_merchant_kyc(merchant_data)
+
+                return RiskScoreResponse(
+                    query_id=context.get("query_id", str(uuid.uuid4())),
+                    entity_id=entity_id,
+                    risk_score=result.get("risk_score", 0.5),
+                    risk_level=result.get("risk_level", "medium"),
+                    factors=[v.get("rule") for v in result.get("violations", [])],
+                    confidence=0.90,
+                    responding_agent=self.name,
+                    timestamp=datetime.utcnow()
+                )
+
+            else:
+                # Unknown entity type
+                return RiskScoreResponse(
+                    query_id=context.get("query_id", str(uuid.uuid4())),
+                    entity_id=entity_id,
+                    risk_score=0.5,
+                    risk_level="unknown",
+                    factors=["Unknown entity type"],
+                    confidence=0.0,
+                    responding_agent=self.name,
+                    timestamp=datetime.utcnow()
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error computing risk score: {e}")
+            return RiskScoreResponse(
+                query_id=context.get("query_id", str(uuid.uuid4())),
+                entity_id=entity_id,
+                risk_score=0.5,
+                risk_level="error",
+                factors=[f"Error: {str(e)}"],
+                confidence=0.0,
+                responding_agent=self.name,
+                timestamp=datetime.utcnow()
+            )
 
     async def get_metrics(self) -> Dict[str, Any]:
         """Get agent performance metrics"""

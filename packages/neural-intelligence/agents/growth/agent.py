@@ -28,7 +28,10 @@ class GrowthAgent(NeuralAgent):
     def __init__(self):
         super().__init__(
             name="GrowthAgent",
-            seed=os.getenv("AGENT_SEED", "growth_agent_seed_phrase"),
+            seed=os.getenv(
+                "GROWTH_AGENT_SEED",
+                os.getenv("AGENT_SEED", "growth_agent_seed_phrase")
+            ),
             port=int(os.getenv("GROWTH_AGENT_PORT", 8103)),
             endpoint=[f"http://localhost:{os.getenv('GROWTH_AGENT_PORT', 8103)}/submit"],
             mailbox=os.getenv("AGENT_MAILBOX_KEY"),

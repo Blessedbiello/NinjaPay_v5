@@ -24,7 +24,7 @@
     "bs58": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "jsonwebtoken": "^9.0.2",
+    "jose": "^5.3.0",
     "lucide-react": "^0.454.0",
     "nanoid": "^5.1.6",
     "next": "^14.2.16",
@@ -45,6 +45,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "autoprefixer": "^10.4.20",
+    "pino-pretty": "^11.3.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.7.2"

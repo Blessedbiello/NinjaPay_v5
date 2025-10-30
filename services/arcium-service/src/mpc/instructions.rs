@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 
 /// Arcium compiled instruction metadata
 pub struct CompiledInstruction {
@@ -86,7 +86,9 @@ impl InstructionLoader {
 
     fn get_parameters(&self, name: &str) -> Vec<String> {
         match name {
-            "encrypted_transfer" => vec!["sender_balance: u64".to_string(), "amount: u64".to_string()],
+            "encrypted_transfer" => {
+                vec!["sender_balance: u64".to_string(), "amount: u64".to_string()]
+            }
             "batch_payroll" => vec![
                 "payer_balance: u64".to_string(),
                 "amount1: u64".to_string(),

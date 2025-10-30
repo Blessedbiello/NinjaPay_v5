@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ArciumServiceClient } from '@ninjapay/solana-utils';
 import { prisma } from '@ninjapay/database';
 import { getMerchantId } from '@/lib/auth';
+import { requireEncryptionMasterKey } from '@/lib/env';
 
 const arciumClient = new ArciumServiceClient({
   baseUrl: process.env.ARCIUM_SERVICE_URL || 'http://localhost:8001',
-  masterKey: process.env.ENCRYPTION_MASTER_KEY || '0'.repeat(64),
+  masterKey: requireEncryptionMasterKey(),
 });
 
 /**

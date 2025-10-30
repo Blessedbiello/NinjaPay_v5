@@ -1,11 +1,38 @@
-use std::error::Error;
 use chacha20poly1305::{
     aead::{Aead, KeyInit, OsRng},
     ChaCha20Poly1305, Nonce,
 };
 use hkdf::Hkdf;
-use sha2::Sha256;
 use rand::RngCore;
+use sha2::Sha256;
+use std::{error::Error, sync::OnceLock};
+
+#[derive(Clone, Copy, Debug)]
+enum EncryptionMode {
+    Dev,
+    Rescue,
+}
+
+fn resolve_mode() -> EncryptionMode {
+    match std::env::var("ARCIUM_ENCRYPTION_BACKEND")
+        .unwrap_or_else(|_| "dev".to_string())
+        .to_lowercase()
+        .as_str()
+    {
+        "rescue" => EncryptionMode::Rescue,
+        _ => EncryptionMode::Dev,
+    }
+}
+
+fn log_rescue_placeholder() {
+    static RESCUE_LOG_ONCE: OnceLock<()> = OnceLock::new();
+    RESCUE_LOG_ONCE.get_or_init(|| {
+        log::warn!(
+            "🪄 Rescue encryption backend requested. Falling back to development cipher until \
+            native Rescue bindings are linked."
+        );
+    });
+}
 
 /// Development-mode encryption helper for MPC computations
 ///
@@ -27,6 +54,7 @@ use rand::RngCore;
 #[derive(Clone)]
 pub struct EncryptionHelper {
     master_key: [u8; 32],
+    mode: EncryptionMode,
 }
 
 impl EncryptionHelper {
@@ -34,8 +62,9 @@ impl EncryptionHelper {
     ///
     /// The master key should be a 32-byte secret from environment config
     pub fn new_with_key(master_key: [u8; 32]) -> Self {
-        log::debug!("🔐 Encryption helper initialized (dev mode)");
-        Self { master_key }
+        let mode = resolve_mode();
+        log::debug!("🔐 Encryption helper initialized ({:?} mode)", mode);
+        Self { master_key, mode }
     }
 
     /// Create with default key (for testing only)
@@ -43,6 +72,7 @@ impl EncryptionHelper {
         log::warn!("⚠️  Using default encryption key - NOT FOR PRODUCTION");
         Self {
             master_key: [42u8; 32], // Deterministic for testing
+            mode: EncryptionMode::Dev,
         }
     }
 
@@ -91,32 +121,14 @@ impl EncryptionHelper {
     /// Encrypt arbitrary bytes
     ///
     /// Format: [nonce (12 bytes)] + [ciphertext] + [tag (16 bytes)]
-    pub fn encrypt_bytes(
-        &self,
-        data: &[u8],
-        user_pubkey: &str,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
-        // Derive user-specific key
-        let user_key = self.derive_user_key(user_pubkey)?;
-        let cipher = ChaCha20Poly1305::new(&user_key.into());
-
-        // Generate random nonce
-        let mut nonce_bytes = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
-
-        // Encrypt
-        let ciphertext = cipher
-            .encrypt(nonce, data)
-            .map_err(|e| format!("Encryption failed: {}", e))?;
-
-        // Combine: nonce + ciphertext (ciphertext includes auth tag)
-        let mut result = Vec::with_capacity(12 + ciphertext.len());
-        result.extend_from_slice(&nonce_bytes);
-        result.extend_from_slice(&ciphertext);
-
-        log::debug!("✅ Encrypted {} bytes → {} bytes", data.len(), result.len());
-        Ok(result)
+    pub fn encrypt_bytes(&self, data: &[u8], user_pubkey: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        match self.mode {
+            EncryptionMode::Dev => self.encrypt_bytes_dev(data, user_pubkey),
+            EncryptionMode::Rescue => {
+                log_rescue_placeholder();
+                self.encrypt_bytes_dev(data, user_pubkey)
+            }
+        }
     }
 
     /// Decrypt arbitrary bytes
@@ -127,30 +139,13 @@ impl EncryptionHelper {
         encrypted: &[u8],
         user_pubkey: &str,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        // Validate minimum length (nonce + tag)
-        if encrypted.len() < 12 + 16 {
-            return Err(format!(
-                "Invalid encrypted data: too short (got {} bytes, need at least 28)",
-                encrypted.len()
-            )
-            .into());
+        match self.mode {
+            EncryptionMode::Dev => self.decrypt_bytes_dev(encrypted, user_pubkey),
+            EncryptionMode::Rescue => {
+                log_rescue_placeholder();
+                self.decrypt_bytes_dev(encrypted, user_pubkey)
+            }
         }
-
-        // Extract nonce and ciphertext
-        let (nonce_bytes, ciphertext) = encrypted.split_at(12);
-        let nonce = Nonce::from_slice(nonce_bytes);
-
-        // Derive user-specific key
-        let user_key = self.derive_user_key(user_pubkey)?;
-        let cipher = ChaCha20Poly1305::new(&user_key.into());
-
-        // Decrypt
-        let plaintext = cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|e| format!("Decryption failed: {}", e))?;
-
-        log::debug!("✅ Decrypted {} bytes → {} bytes", encrypted.len(), plaintext.len());
-        Ok(plaintext)
     }
 
     /// Validate encrypted input format
@@ -217,8 +212,63 @@ impl EncryptionHelper {
             result.extend_from_slice(&value);
         }
 
-        log::info!("✅ Prepared batch of {} encrypted inputs ({} bytes)", count, result.len());
+        log::info!(
+            "✅ Prepared batch of {} encrypted inputs ({} bytes)",
+            count,
+            result.len()
+        );
         Ok(result)
+    }
+
+    fn encrypt_bytes_dev(&self, data: &[u8], user_pubkey: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        let user_key = self.derive_user_key(user_pubkey)?;
+        let cipher = ChaCha20Poly1305::new(&user_key.into());
+
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let ciphertext = cipher
+            .encrypt(nonce, data)
+            .map_err(|e| format!("Encryption failed: {}", e))?;
+
+        let mut result = Vec::with_capacity(12 + ciphertext.len());
+        result.extend_from_slice(&nonce_bytes);
+        result.extend_from_slice(&ciphertext);
+
+        log::debug!("✅ Encrypted {} bytes → {} bytes", data.len(), result.len());
+        Ok(result)
+    }
+
+    fn decrypt_bytes_dev(
+        &self,
+        encrypted: &[u8],
+        user_pubkey: &str,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        if encrypted.len() < 12 + 16 {
+            return Err(format!(
+                "Invalid encrypted data: too short (got {} bytes, need at least 28)",
+                encrypted.len()
+            )
+            .into());
+        }
+
+        let (nonce_bytes, ciphertext) = encrypted.split_at(12);
+        let nonce = Nonce::from_slice(nonce_bytes);
+
+        let user_key = self.derive_user_key(user_pubkey)?;
+        let cipher = ChaCha20Poly1305::new(&user_key.into());
+
+        let plaintext = cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|e| format!("Decryption failed: {}", e))?;
+
+        log::debug!(
+            "✅ Decrypted {} bytes → {} bytes",
+            encrypted.len(),
+            plaintext.len()
+        );
+        Ok(plaintext)
     }
 
     /// Extract individual results from batch computation

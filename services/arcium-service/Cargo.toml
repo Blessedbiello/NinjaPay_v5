@@ -29,11 +29,17 @@ bs58 = "0.5"
 hex = "0.4"
 base64 = "0.21"
 
+# Solana SDK for cluster interaction (using latest version for zeroize compatibility)
+solana-client = "2.2.2"
+solana-sdk = "2.2.2"
+solana-transaction-status = "2.2.2"
+
 # Cryptography (development-mode encryption)
 chacha20poly1305 = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"
 rand = "0.8"
+borsh = "0.10"
 
 # Logging
 env_logger = "0.11"
@@ -46,6 +52,7 @@ redis = { version = "0.24", features = ["tokio-comp"] }
 lazy_static = "1.4"
 chrono = "0.4"
 dotenv = "0.15.0"
+hmac = { version = "0.12.1", features = ["std"] }
 
 [workspace]
 members = [

@@ -1,11 +1,20 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/errorHandler';
-import { ComputationCallbackService, ComputationCallbackPayload } from '../services/computation-callback.service';
+import { ComputationCallbackService, ComputationCallbackPayload, CallbackVerificationContext } from '../services/computation-callback.service';
 import { prisma } from '@ninjapay/database';
 
 const router: Router = Router();
-const callbackService = new ComputationCallbackService(prisma);
+// Lazy-load callback service to ensure dotenv is loaded first
+let _callbackService: ComputationCallbackService | null = null;
+function getCallbackService(): ComputationCallbackService {
+  if (!_callbackService) {
+    _callbackService = new ComputationCallbackService(prisma);
+  }
+  return _callbackService;
+}
+
+type RequestWithRawBody = Request & { rawBody?: string };
 
 const callbackSchema = z.object({
   computation_id: z.string(),
@@ -33,7 +42,14 @@ router.post(
   '/callbacks',
   asyncHandler(async (req, res) => {
     const payload = callbackSchema.parse(req.body) as ComputationCallbackPayload;
-    await callbackService.handleCallback(payload);
+    const requestWithRaw = req as RequestWithRawBody;
+    const verificationContext: CallbackVerificationContext = {
+      signature: req.header('x-arcium-signature'),
+      timestamp: req.header('x-arcium-timestamp'),
+      rawBody: requestWithRaw.rawBody ?? JSON.stringify(req.body),
+    };
+
+    await getCallbackService().handleCallback(payload, verificationContext);
 
     res.json({
       success: true,

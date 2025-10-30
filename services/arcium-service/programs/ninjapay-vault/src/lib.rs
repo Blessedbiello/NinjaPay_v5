@@ -29,11 +29,7 @@ pub mod ninjapay_vault {
 
         // Queue the computation to Arcium MPC cluster
         // The actual transfer logic is in the encrypted module below
-        queue_computation(
-            &ctx.accounts.cluster,
-            &ctx.accounts.user,
-            &encrypted_amount,
-        )?;
+        queue_computation(&ctx.accounts.cluster, &ctx.accounts.user, &encrypted_amount)?;
 
         Ok(())
     }

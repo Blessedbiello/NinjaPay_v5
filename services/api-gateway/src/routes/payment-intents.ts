@@ -7,8 +7,24 @@ import { ArciumClientService } from '../services/arcium-client.service';
 import { prisma } from '@ninjapay/database';
 
 const router: Router = Router();
-const arcium = new ArciumClientService();
-const paymentIntentService = new PaymentIntentService(prisma, arcium);
+
+// Lazy-load Arcium service to ensure dotenv is loaded first
+let _arcium: ArciumClientService | null = null;
+function getArciumService(): ArciumClientService {
+  if (!_arcium) {
+    _arcium = new ArciumClientService();
+  }
+  return _arcium;
+}
+
+// Lazy-load PaymentIntentService
+let _paymentIntentService: PaymentIntentService | null = null;
+function getPaymentIntentService(): PaymentIntentService {
+  if (!_paymentIntentService) {
+    _paymentIntentService = new PaymentIntentService(prisma, getArciumService());
+  }
+  return _paymentIntentService;
+}
 
 const serializePaymentIntent = (paymentIntent: any) => ({
   id: paymentIntent.id,
@@ -62,6 +78,7 @@ const createPaymentIntentSchema = z.object({
   product_id: z.string().optional(),
   description: z.string().optional(),
   metadata: z.record(z.any()).optional(),
+  user_signature: z.string().min(64).max(128).optional(),
 });
 
 const updatePaymentIntentSchema = z.object({
@@ -83,7 +100,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = createPaymentIntentSchema.parse(req.body);
 
-    const paymentIntent = await paymentIntentService.create({
+    const paymentIntent = await getPaymentIntentService().create({
       merchantId: req.merchantId!,
       recipient: body.recipient,
       amount: body.amount,
@@ -92,6 +109,7 @@ router.post(
       productId: body.product_id,
       description: body.description,
       metadata: body.metadata,
+      userSignature: body.user_signature,
     });
 
     res.status(201).json({
@@ -107,7 +125,7 @@ router.get(
   '/:id',
   authenticateMerchant,
   asyncHandler(async (req, res) => {
-    const paymentIntent = await paymentIntentService.retrieve(req.params.id);
+    const paymentIntent = await getPaymentIntentService().retrieve(req.params.id);
 
     res.json({
       success: true,
@@ -124,7 +142,7 @@ router.patch(
   asyncHandler(async (req, res) => {
     const body = updatePaymentIntentSchema.parse(req.body);
 
-    const paymentIntent = await paymentIntentService.update(req.params.id, {
+    const paymentIntent = await getPaymentIntentService().update(req.params.id, {
       description: body.description,
       metadata: body.metadata,
     });
@@ -144,7 +162,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const query = listPaymentIntentsSchema.parse(req.query);
 
-    const result = await paymentIntentService.list({
+    const result = await getPaymentIntentService().list({
       merchantId: req.merchantId!,
       customerId: query.customer_id,
       status: query.status,
@@ -171,7 +189,7 @@ router.post(
   '/:id/confirm',
   authenticateMerchant,
   asyncHandler(async (req, res) => {
-    const paymentIntent = await paymentIntentService.confirm(req.params.id);
+    const paymentIntent = await getPaymentIntentService().confirm(req.params.id);
 
     res.json({
       success: true,
@@ -197,7 +215,7 @@ router.post(
   '/:id/cancel',
   authenticateMerchant,
   asyncHandler(async (req, res) => {
-    const paymentIntent = await paymentIntentService.cancel(req.params.id);
+    const paymentIntent = await getPaymentIntentService().cancel(req.params.id);
 
     res.json({
       success: true,

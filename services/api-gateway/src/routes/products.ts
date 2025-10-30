@@ -9,6 +9,7 @@ const productService = new ProductService(prisma);
 
 // Validation schemas
 const createProductSchema = z.object({
+  merchantId: z.string().optional(), // Optional merchant ID override
   name: z.string().min(1).max(255),
   description: z.string().optional(),
   price: z.number().positive(),
@@ -41,7 +42,8 @@ router.post(
     const body = createProductSchema.parse(req.body);
 
     // TODO: Get merchantId from auth middleware
-    const merchantId = 'temp-merchant-id';
+    // For now, use the provided merchantId from body or default to first merchant
+    const merchantId = body.merchantId || 'cmgsmujfk0005xrj94pq6qhu2'; // Bprime's merchant ID
 
     const product = await productService.create({
       merchantId,

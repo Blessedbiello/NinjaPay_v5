@@ -1,9 +1,10 @@
 'use client';
 
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useRouter } from 'next/navigation';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { useEffect, useState } from 'react';
-import { Wallet, LogOut, User } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { LogOut, User } from 'lucide-react';
 import bs58 from 'bs58';
 import { apiClient } from '@/lib/api-client';
 
@@ -13,6 +14,25 @@ export function WalletConnect() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [merchantInfo, setMerchantInfo] = useState<any>(null);
+  const router = useRouter();
+
+  const navigateToDashboard = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (window.location.pathname !== '/dashboard') {
+      router.replace('/dashboard');
+    }
+  }, [router]);
+
+  useEffect(() => {
+    try {
+      router.prefetch('/dashboard');
+    } catch (error) {
+      console.error('Failed to prefetch dashboard route:', error);
+    }
+  }, [router]);
 
   // Check if we have a stored auth token
   useEffect(() => {
@@ -33,13 +53,24 @@ export function WalletConnect() {
     }
   }, [connected, publicKey, isAuthenticated]);
 
+  useEffect(() => {
+    if (isAuthenticated && merchantInfo) {
+      navigateToDashboard();
+    }
+  }, [isAuthenticated, merchantInfo, navigateToDashboard]);
+
   const fetchMerchantInfo = async (token: string) => {
     try {
-      // You can add an endpoint to fetch merchant info if needed
-      const merchantData = JSON.parse(localStorage.getItem('merchant_info') || '{}');
-      setMerchantInfo(merchantData);
+      const stored = localStorage.getItem('merchant_info');
+      if (stored) {
+        const merchantData = JSON.parse(stored);
+        setMerchantInfo(merchantData);
+      } else {
+        setMerchantInfo(null);
+      }
     } catch (error) {
       console.error('Error fetching merchant info:', error);
+      setMerchantInfo(null);
     }
   };
 
@@ -89,21 +120,29 @@ export function WalletConnect() {
         throw new Error(verifyData.error?.message || 'Authentication failed');
       }
 
-      // Store token and user info
+      // Store token and merchant info
       const token = verifyData.data.token;
+      const merchantRecord =
+        verifyData.data.merchant ?? {
+          id: verifyData.data.user?.merchantId ?? `dev_${publicKey.toBase58().slice(0, 8)}`,
+          businessName:
+            verifyData.data.user?.businessName ?? `Dev Merchant ${publicKey.toBase58().slice(0, 6)}`,
+          email: verifyData.data.user?.email ?? `merchant_${publicKey.toBase58().slice(0, 8)}@ninjapay.local`,
+        };
+
       localStorage.setItem('auth_token', token);
-      localStorage.setItem('merchant_info', JSON.stringify(verifyData.data.user));
+      localStorage.setItem('merchant_info', JSON.stringify(merchantRecord));
 
       // Also set as cookie for middleware
       document.cookie = `auth_token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
       setAuthToken(token);
       setIsAuthenticated(true);
-      setMerchantInfo(verifyData.data.user);
+      setMerchantInfo(merchantRecord);
       apiClient.setAuthToken(token);
 
       // Redirect to dashboard after successful authentication
-      window.location.href = '/dashboard';
+      navigateToDashboard();
     } catch (error) {
       console.error('Authentication error:', error);
       alert('Failed to authenticate. Please try again.');
@@ -112,20 +151,25 @@ export function WalletConnect() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     // Clear localStorage
     localStorage.removeItem('auth_token');
     localStorage.removeItem('merchant_info');
 
     // Clear cookie
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to clear auth cookie:', error);
+    }
     document.cookie = 'auth_token=; path=/; max-age=0';
 
     setAuthToken(null);
     setIsAuthenticated(false);
     setMerchantInfo(null);
     apiClient.setAuthToken(null);
-    disconnect();
-    window.location.href = '/';
+    Promise.resolve(disconnect()).catch(() => null);
+    router.replace('/');
   };
 
   if (isAuthenticating) {

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useProducts, useDeleteProduct } from '@/hooks/useApi';
+import { apiClient } from '@/lib/api-client';
 
 export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,28 +102,25 @@ export default function ProductsPage() {
         }
       }
 
-      // Create or update product with uploaded image URLs
-      const url = editingProduct
-        ? `/api/v1/products/${editingProduct.id}`
-        : '/api/v1/products';
-      const method = editingProduct ? 'PATCH' : 'POST';
+      const parsedPrice = parseFloat(formData.price);
+      if (Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+        throw new Error('Enter a valid price above zero');
+      }
 
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name,
-          description: formData.description,
-          price: parseFloat(formData.price),
-          currency: formData.currency,
-          images: imageUrls,
-          active: true,
-        }),
-      });
+      const payload = {
+        name: formData.name.trim(),
+        description: formData.description?.trim() || undefined,
+        price: parsedPrice,
+        currency: formData.currency,
+        images: imageUrls,
+        active: true,
+      };
 
-      const data = await response.json();
+      const response = editingProduct
+        ? await apiClient.updateProduct(editingProduct.id, payload)
+        : await apiClient.createProduct(payload);
 
-      if (data.success) {
+      if (response.success) {
         setShowCreateModal(false);
         setEditingProduct(null);
         setFormData({
@@ -136,7 +134,10 @@ export default function ProductsPage() {
         setImagePreviews([]);
         await refetch();
       } else {
-        alert('Error: ' + (data.error?.message || `Failed to ${editingProduct ? 'update' : 'create'} product`));
+        throw new Error(
+          response.error?.message ||
+            `Failed to ${editingProduct ? 'update' : 'create'} product`
+        );
       }
     } catch (error) {
       console.error(`Error ${editingProduct ? 'updating' : 'creating'} product:`, error);

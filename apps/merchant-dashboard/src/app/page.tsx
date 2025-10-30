@@ -1,9 +1,33 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { WalletConnect } from '@/components/WalletConnect';
-import Link from 'next/link';
+
+function readStoredToken() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const storedToken = localStorage.getItem('auth_token');
+  if (storedToken) {
+    return storedToken;
+  }
+
+  const cookieMatch = document.cookie.match(/(?:^|;\s*)auth_token=([^;]*)/);
+  return cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+}
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = readStoredToken();
+    if (token) {
+      router.replace('/dashboard');
+    }
+  }, [router]);
+
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Animated gradient background */}

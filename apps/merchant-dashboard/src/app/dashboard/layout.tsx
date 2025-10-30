@@ -1,6 +1,7 @@
 import { Sidebar } from '@/components/Sidebar';
 import { Header } from '@/components/Header';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { OnboardingModal } from '@/components/OnboardingModal';
 
 export default function DashboardLayout({
   children,
@@ -17,6 +18,7 @@ export default function DashboardLayout({
             <div className="container mx-auto p-6">{children}</div>
           </main>
         </div>
+        <OnboardingModal />
       </div>
     </ProtectedRoute>
   );

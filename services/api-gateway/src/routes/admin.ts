@@ -1,16 +1,20 @@
-import { Router, Request, Response } from 'express';
-import { PrismaClient, KYCStatus, ComputationStatus, TxStatus } from '@ninjapay/database';
+import { Router, Request, Response, NextFunction } from 'express';
+import { prisma, KYCStatus, ComputationStatus, TxStatus } from '@ninjapay/database';
 import { createLogger } from '@ninjapay/logger';
 
-const router = Router();
-const prisma = new PrismaClient();
+const router: Router = Router();
 const logger = createLogger('admin-routes');
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+
+if (!ADMIN_API_KEY) {
+  throw new Error('ADMIN_API_KEY environment variable must be configured for admin routes');
+}
 
 // Simple admin authentication middleware (in production, use proper JWT/OAuth)
-const adminAuth = (req: Request, res: Response, next: any) => {
+const adminAuth = (req: Request, res: Response, next: NextFunction) => {
   const adminKey = req.headers['x-admin-key'];
 
-  if (adminKey !== process.env.ADMIN_API_KEY) {
+  if (adminKey !== ADMIN_API_KEY) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -69,12 +73,18 @@ const computeP95 = (values: number[]): number => {
   return sorted[index];
 };
 
+const ACTIVE_COMPUTATION_STATUSES = new Set<ComputationStatus>([
+  ComputationStatus.QUEUED,
+  ComputationStatus.RUNNING,
+]);
+
+const isActiveComputationStatus = (status: ComputationStatus | null): boolean =>
+  Boolean(status && ACTIVE_COMPUTATION_STATUSES.has(status));
+
 const alertsEstimate = (
   activity: { computationStatus: ComputationStatus | null }[]
 ): number =>
-  activity.filter((item) =>
-    [ComputationStatus.QUEUED, ComputationStatus.RUNNING].includes(item.computationStatus as ComputationStatus)
-  ).length;
+  activity.filter((item) => isActiveComputationStatus(item.computationStatus)).length;
 
 router.get('/overview', async (req: Request, res: Response) => {
   try {
@@ -208,7 +218,7 @@ router.get('/overview', async (req: Request, res: Response) => {
         {
           name: 'MagicBlock Payroll',
           status: paymentIntentsLastHour.filter((intent) =>
-            [ComputationStatus.QUEUED, ComputationStatus.RUNNING].includes(intent.computationStatus as ComputationStatus)
+            isActiveComputationStatus(intent.computationStatus)
           ).length > 5
             ? 'Degraded'
             : 'Operational',
@@ -615,7 +625,7 @@ router.get('/agents', async (req: Request, res: Response) => {
     });
 
     const queueDepth = recentActivity.filter((item) =>
-      [ComputationStatus.QUEUED, ComputationStatus.RUNNING].includes(item.computationStatus as ComputationStatus)
+      isActiveComputationStatus(item.computationStatus)
     ).length;
 
     const succeeded = recentActivity.filter(

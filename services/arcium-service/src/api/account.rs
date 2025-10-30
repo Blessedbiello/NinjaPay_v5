@@ -2,7 +2,7 @@
 // Phase 2 will use Arcium cluster's native account management and Solana program instructions.
 // All endpoints return 501 Not Implemented.
 
-use actix_web::{post, get, web, HttpResponse, Responder};
+use actix_web::{get, post, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -44,9 +44,7 @@ pub struct AccountInfoResponse {
 
 /// DEPRECATED: Use Arcium cluster native account management in Phase 2
 #[post("/account/setup")]
-async fn setup_account(
-    _req: web::Json<SetupAccountRequest>,
-) -> impl Responder {
+async fn setup_account(_req: web::Json<SetupAccountRequest>) -> impl Responder {
     HttpResponse::NotImplemented().json(serde_json::json!({
         "error": "deprecated",
         "message": "This endpoint is deprecated. Use Arcium cluster native account management."
@@ -55,9 +53,7 @@ async fn setup_account(
 
 /// DEPRECATED: Use Solana program initialization directly
 #[post("/account/vault/initialize")]
-async fn initialize_vault(
-    _req: web::Json<InitializeVaultRequest>,
-) -> impl Responder {
+async fn initialize_vault(_req: web::Json<InitializeVaultRequest>) -> impl Responder {
     HttpResponse::NotImplemented().json(serde_json::json!({
         "error": "deprecated",
         "message": "This endpoint is deprecated. Initialize vaults via Solana program instructions."
@@ -66,9 +62,7 @@ async fn initialize_vault(
 
 /// DEPRECATED: Query Solana accounts directly
 #[get("/account/info/{account_address}")]
-async fn get_account_info(
-    _path: web::Path<String>,
-) -> impl Responder {
+async fn get_account_info(_path: web::Path<String>) -> impl Responder {
     HttpResponse::NotImplemented().json(serde_json::json!({
         "error": "deprecated",
         "message": "This endpoint is deprecated. Query Solana RPC directly for account data."
@@ -77,9 +71,7 @@ async fn get_account_info(
 
 /// DEPRECATED: Query encrypted balances via Solana RPC
 #[get("/account/balance/{account_address}")]
-async fn get_encrypted_balance(
-    _path: web::Path<String>,
-) -> impl Responder {
+async fn get_encrypted_balance(_path: web::Path<String>) -> impl Responder {
     HttpResponse::NotImplemented().json(serde_json::json!({
         "error": "deprecated",
         "message": "This endpoint is deprecated. Query encrypted balances from Solana accounts."
@@ -88,9 +80,7 @@ async fn get_encrypted_balance(
 
 /// DEPRECATED: Use Prisma database queries via Next.js API routes
 #[get("/account/list/{user_pubkey}")]
-async fn list_user_accounts(
-    _path: web::Path<String>,
-) -> impl Responder {
+async fn list_user_accounts(_path: web::Path<String>) -> impl Responder {
     HttpResponse::NotImplemented().json(serde_json::json!({
         "error": "deprecated",
         "message": "This endpoint is deprecated. Use Prisma database queries via Next.js API routes."

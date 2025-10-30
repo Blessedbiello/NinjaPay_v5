@@ -72,3 +72,6 @@ venv/
 !docs/
 
 tracks.mddump.rdb
+dump.rdb
+temp-*.rdb
+test-merchant.json

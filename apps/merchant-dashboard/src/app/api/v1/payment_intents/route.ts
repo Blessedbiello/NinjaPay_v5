@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@ninjapay/database';
 import { getMerchantId } from '@/lib/auth';
+import { requireEncryptionMasterKey } from '@/lib/env';
 import { EncryptionAPIUtils } from '@ninjapay/solana-utils';
 
 // Initialize encryption helper
 const encryptionUtils = new EncryptionAPIUtils(
-  process.env.ENCRYPTION_MASTER_KEY || '0'.repeat(64)
+  requireEncryptionMasterKey()
 );
 
 /**
@@ -105,6 +106,8 @@ export async function POST(request: NextRequest) {
       description,
       metadata,
       userPubkey, // Wallet address for encryption
+      recipient,
+      userSignature,
     } = body;
 
     // Validate required fields
@@ -152,22 +155,28 @@ export async function POST(request: NextRequest) {
       encryptionKey
     );
 
+    const metadataPayload: Record<string, unknown> = {
+      ...metadata,
+      encrypted: true,
+      encryption_key: encryptionKey,
+    };
+
+    if (userSignature) {
+      metadataPayload.merchantSignature = userSignature;
+    }
+
     // Create payment intent
     const paymentIntent = await prisma.paymentIntent.create({
       data: {
         merchantId,
         customerId,
         productId,
-        recipient: userPubkey || customerId || 'unknown',
+        recipient: recipient || userPubkey || customerId || 'unknown',
         amountCommitment: encryptedAmount,
         currency,
         description,
         status: 'PENDING',
-        metadata: {
-          ...metadata,
-          encrypted: true,
-          encryption_key: encryptionKey,
-        },
+        metadata: metadataPayload,
       },
       include: {
         customer: true,

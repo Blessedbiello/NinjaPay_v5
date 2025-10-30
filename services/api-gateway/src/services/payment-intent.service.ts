@@ -11,6 +11,7 @@ export interface CreatePaymentIntentParams {
   productId?: string;
   description?: string;
   metadata?: Record<string, any>;
+  userSignature?: string;
 }
 
 export interface UpdatePaymentIntentParams {
@@ -33,6 +34,13 @@ export class PaymentIntentService {
   ) {}
 
   async create(params: CreatePaymentIntentParams) {
+    const merchantContext = await this.resolveMerchantContext(
+      params.merchantId,
+      params.sender
+    );
+
+    const amountValue = this.normalizeAmount(params.amount);
+
     // 1. Encrypt amount using Arcium MPC
     const {
       ciphertext,
@@ -40,19 +48,33 @@ export class PaymentIntentService {
       proofs,
       nonce,
       publicKey,
-      computationId,
-    } = await this.arcium.encryptAmount(params.amount);
+      clientPublicKey,
+    } = await this.arcium.encryptAmount(amountValue, {
+      userPubkey: merchantContext.wallet,
+      metadata: {
+        merchantId: params.merchantId,
+        recipient: params.recipient,
+      },
+    });
 
     // 2. Create payment intent in database
-    const metadata = {
+    const metadata: Record<string, any> = {
       ...(params.metadata ?? {}),
       arciumProofs: proofs,
+      encrypted: true,
+      encryption_key: merchantContext.wallet,
+      amount: params.amount,
+      amountMinor: amountValue.toString(),
     };
+
+    if (params.userSignature) {
+      metadata.merchantSignature = params.userSignature;
+    }
 
     const paymentIntent = await this.db.paymentIntent.create({
       data: {
         merchantId: params.merchantId,
-        sender: params.sender,
+        sender: params.sender ?? merchantContext.wallet,
         recipient: params.recipient,
         customerId: params.customerId,
         productId: params.productId,
@@ -64,7 +86,7 @@ export class PaymentIntentService {
         metadata,
         encryptionNonce: nonce,
         encryptionPublicKey: publicKey,
-        computationId,
+        clientPublicKey: clientPublicKey,
         computationStatus: 'QUEUED',
       },
       include: {
@@ -175,8 +197,10 @@ export class PaymentIntentService {
       },
     });
 
-    // Submit to blockchain
-    await this.submitToBlockchain(id);
+    // Submit to blockchain if not already queued
+    if (!paymentIntent.computationId) {
+      await this.submitToBlockchain(id);
+    }
 
     return updated;
   }
@@ -212,14 +236,147 @@ export class PaymentIntentService {
   }
 
   private async submitToBlockchain(paymentIntentId: string) {
-    // TODO: Implement blockchain submission
-    // 1. Get payment intent from database
-    // 2. Create Solana transaction with encrypted amount
-    // 3. Submit to Solana blockchain
-    // 4. Update payment intent with txSignature
-    // 5. Poll for confirmation
-    // 6. Update status to CONFIRMED/FINALIZED
+    try {
+      const paymentIntent = await this.db.paymentIntent.findUnique({
+        where: { id: paymentIntentId },
+      });
 
-    console.log(`[TODO] Submit payment intent ${paymentIntentId} to blockchain`);
+      if (!paymentIntent) {
+        console.warn(
+          `Payment intent ${paymentIntentId} not found while queuing computation`
+        );
+        return;
+      }
+
+      if (!paymentIntent.merchantId) {
+        console.warn(
+          `Payment intent ${paymentIntentId} has no merchant associated`
+        );
+        return;
+      }
+
+      const merchant = await this.db.merchant.findUnique({
+        where: { id: paymentIntent.merchantId },
+        include: {
+          user: {
+            select: {
+              walletAddress: true,
+            },
+          },
+        },
+      });
+
+      if (!merchant || !merchant.user?.walletAddress) {
+        throw new Error(
+          `Merchant wallet not found for payment intent ${paymentIntentId}`
+        );
+      }
+
+      const metadata = (paymentIntent.metadata as Record<string, any>) || {};
+      const merchantSignature =
+        metadata.merchantSignature ??
+        metadata.userSignature ??
+        metadata.merchant_signature;
+
+      const amountRaw = metadata.amountMinor ?? metadata.amount;
+
+      if (amountRaw === undefined) {
+        throw new Error(
+          `Payment intent ${paymentIntentId} missing amount metadata`
+        );
+      }
+
+      const amount = this.normalizeAmount(amountRaw);
+      const availableBalance = metadata.availableBalance
+        ? this.normalizeAmount(metadata.availableBalance)
+        : undefined;
+
+      const { computationId } = await this.arcium.queuePaymentIntentSettlement({
+        paymentIntentId: paymentIntent.id,
+        merchantWallet: merchant.user.walletAddress,
+        amount,
+        recipient: paymentIntent.recipient,
+        currency: paymentIntent.currency,
+        merchantId: paymentIntent.merchantId,
+        metadata,
+        availableBalance,
+        userSignature: merchantSignature,
+      });
+
+      await this.db.paymentIntent.update({
+        where: { id: paymentIntent.id },
+        data: {
+          computationId,
+          computationStatus: 'QUEUED',
+          status: 'PROCESSING',
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Failed to queue payment intent settlement:',
+        (error as Error).message
+      );
+
+      await this.db.paymentIntent.update({
+        where: { id: paymentIntentId },
+        data: {
+          computationStatus: 'FAILED',
+          computationError: (error as Error).message,
+        },
+      }).catch(() => {
+        // Best-effort update – ignore secondary failures
+      });
+    }
+  }
+
+  private async resolveMerchantContext(
+    merchantId?: string,
+    sender?: string
+  ): Promise<{ wallet: string }> {
+    let walletAddress = sender ?? null;
+
+    if (merchantId) {
+      const merchant = await this.db.merchant.findUnique({
+        where: { id: merchantId },
+        include: {
+          user: {
+            select: {
+              walletAddress: true,
+            },
+          },
+        },
+      });
+
+      if (!merchant) {
+        throw new Error(`Merchant ${merchantId} not found`);
+      }
+
+      walletAddress = merchant.user?.walletAddress ?? walletAddress;
+    }
+
+    if (!walletAddress) {
+      throw new Error('Unable to resolve merchant wallet address');
+    }
+
+    return { wallet: walletAddress };
+  }
+
+  private normalizeAmount(value: number | string | bigint): bigint {
+    if (typeof value === 'bigint') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      if (value.trim() === '') {
+        throw new Error('Amount string cannot be empty');
+      }
+      return BigInt(value);
+    }
+
+    if (!Number.isFinite(value)) {
+      throw new Error('Amount must be a finite number');
+    }
+
+    return BigInt(Math.round(value));
   }
 }

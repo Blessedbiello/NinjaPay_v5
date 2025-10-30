@@ -11,12 +11,19 @@
  * 5. Result polling and decryption
  */
 
-const { ArciumServiceClient } = require('./packages/solana-utils/dist/arcium-service-client');
-const { EncryptionHelper } = require('./packages/solana-utils/dist/encryption');
+const path = require('path');
+const { ArciumServiceClient } = require(path.resolve(__dirname, '../../packages/solana-utils/dist/arcium-service-client'));
+const { EncryptionHelper } = require(path.resolve(__dirname, '../../packages/solana-utils/dist/encryption'));
 
 // Test configuration
-const MASTER_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-const SERVICE_URL = 'http://localhost:8001';
+const MASTER_KEY = process.env.ENCRYPTION_MASTER_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+if (!process.env.ENCRYPTION_MASTER_KEY) {
+  console.warn(
+    '⚠️  Using fallback ENCRYPTION_MASTER_KEY for tests. Ensure the Arcium service is configured with the same value.'
+  );
+}
+const SERVICE_URL = process.env.ARCIUM_SERVICE_URL || 'http://localhost:8001';
 const USER_WALLET = 'DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK';
 
 console.log('🧪 NinjaPay End-to-End Test\n');

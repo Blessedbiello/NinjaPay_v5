@@ -11,6 +11,8 @@ import type {
   PaymentLink,
   CheckoutSession,
 } from '@/lib/api-client';
+import { useWallet } from '@solana/wallet-adapter-react';
+import bs58 from 'bs58';
 
 interface UseApiState<T> {
   data: T | null;
@@ -182,6 +184,7 @@ export function useHealthCheck() {
 export function useCreatePaymentIntent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { publicKey, signMessage } = useWallet();
 
   const create = async (params: {
     amount: number;
@@ -190,11 +193,39 @@ export function useCreatePaymentIntent() {
     productId?: string;
     description?: string;
     metadata?: Record<string, any>;
+    recipient?: string;
   }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.createPaymentIntent(params);
+      if (!publicKey || !signMessage) {
+        throw new Error('Connect a wallet that supports message signing to authorize this payment intent.');
+      }
+
+      const recipient = params.recipient ?? publicKey.toBase58();
+      const payloadDescriptor = {
+        amount: params.amount,
+        currency: params.currency ?? 'USDC',
+        recipient,
+        signer: publicKey.toBase58(),
+        timestamp: Date.now(),
+      };
+
+      const message = `NINJAPAY::PAYMENT_INTENT::${JSON.stringify(payloadDescriptor)}`;
+      const messageBytes = new TextEncoder().encode(message);
+      const signatureBytes = await signMessage(messageBytes);
+      const userSignature = bs58.encode(signatureBytes);
+
+      const response = await apiClient.createPaymentIntent({
+        ...params,
+        recipient,
+        userSignature,
+        metadata: {
+          ...(params.metadata ?? {}),
+          signaturePayload: payloadDescriptor,
+        },
+      });
+
       if (response.success) {
         return response.data;
       } else {

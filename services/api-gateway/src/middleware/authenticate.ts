@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '@ninjapay/database';
 import { AppError } from './errorHandler';
+import { getJwtSecret } from '../utils/jwt';
+import { ApiKeyService } from '../services/api-key.service';
 
 // Extend Express Request to include user
 declare global {
@@ -25,6 +27,15 @@ interface JWTPayload {
   exp?: number;
 }
 
+// Lazy-load JWT_SECRET to ensure dotenv is loaded first
+let _jwtSecret: string | null = null;
+function getJwtSecretCached(): string {
+  if (!_jwtSecret) {
+    _jwtSecret = getJwtSecret();
+  }
+  return _jwtSecret;
+}
+
 /**
  * Middleware to authenticate users via JWT token
  */
@@ -43,10 +54,7 @@ export const authenticateUser = async (
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
     // Verify token
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'default-secret-change-this'
-    ) as JWTPayload;
+    const decoded = jwt.verify(token, getJwtSecretCached()) as JWTPayload;
 
     // Get user from database
     const user = await prisma.user.findUnique({
@@ -90,22 +98,8 @@ export const authenticateMerchant = async (
     const apiKey = req.headers['x-api-key'] as string;
 
     if (apiKey) {
-      // Validate API key from database
-      const merchant = await prisma.merchant.findFirst({
-        where: {
-          apiKeys: {
-            some: {
-              key: apiKey,
-              active: true,
-            },
-          },
-        },
-        select: {
-          id: true,
-          businessName: true,
-          email: true,
-        },
-      });
+      // Validate API key with bcrypt verification
+      const merchant = await ApiKeyService.validateApiKey(apiKey);
 
       if (!merchant) {
         throw new AppError('Invalid API key', 401);
@@ -124,10 +118,7 @@ export const authenticateMerchant = async (
 
     const token = authHeader.substring(7);
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'default-secret-change-this'
-    ) as JWTPayload;
+    const decoded = jwt.verify(token, getJwtSecretCached()) as JWTPayload;
 
     // Get merchant from database
     const merchant = await prisma.merchant.findUnique({
@@ -172,10 +163,7 @@ export const authenticateOptional = async (
     }
 
     const token = authHeader.substring(7);
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'default-secret-change-this'
-    ) as JWTPayload;
+    const decoded = jwt.verify(token, getJwtSecretCached()) as JWTPayload;
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },

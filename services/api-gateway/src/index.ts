@@ -1,7 +1,14 @@
-import express from 'express';
+// Load environment variables FIRST before any other imports
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Validate environment before proceeding
+import { validateEnvironmentOrExit } from './utils/env-validation';
+validateEnvironmentOrExit();
+
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { createLogger } from '@ninjapay/logger';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
@@ -20,12 +27,9 @@ import checkoutSessionRoutes from './routes/checkout-sessions';
 import arciumCallbacksRoutes from './routes/arcium-callbacks';
 import adminRoutes from './routes/admin';
 
-// Load environment variables
-dotenv.config();
-
 const logger = createLogger('api-gateway');
 const app = express();
-const PORT = process.env.API_PORT || 3000;
+const PORT = process.env.API_PORT || 8001;
 
 // Security middleware
 app.use(helmet());
@@ -35,8 +39,14 @@ app.use(cors({
 }));
 
 // Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+const rawBodySaver = (req: Request & { rawBody?: string }, _res: Response, buf: Buffer, _encoding: string) => {
+  if (buf?.length) {
+    req.rawBody = buf.toString('utf8');
+  }
+};
+
+app.use(express.json({ limit: '10mb', verify: rawBodySaver }));
+app.use(express.urlencoded({ extended: true, limit: '10mb', verify: rawBodySaver }));
 
 // Request logging
 app.use(requestLogger);

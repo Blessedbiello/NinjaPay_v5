@@ -1,6 +1,6 @@
+use crate::mpc::types::{ComputationMetadata, ComputationStatus};
 use redis::{aio::Connection, AsyncCommands, Client};
 use std::error::Error;
-use crate::mpc::types::{ComputationMetadata, ComputationStatus};
 
 /// Redis client for caching computation metadata and results
 pub struct RedisClient {
@@ -129,7 +129,9 @@ impl RedisClient {
         status: ComputationStatus,
     ) -> Result<(), Box<dyn Error>> {
         // Get existing metadata
-        let mut metadata = self.get_computation_metadata(computation_id).await?
+        let mut metadata = self
+            .get_computation_metadata(computation_id)
+            .await?
             .ok_or("Computation not found")?;
 
         // Update status
@@ -141,14 +143,18 @@ impl RedisClient {
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
-                    .as_secs()
+                    .as_secs(),
             );
         }
 
         // Store updated metadata
         self.store_computation_metadata(&metadata).await?;
 
-        log::info!("Updated computation {} status to: {:?}", computation_id, status);
+        log::info!(
+            "Updated computation {} status to: {:?}",
+            computation_id,
+            status
+        );
         Ok(())
     }
 

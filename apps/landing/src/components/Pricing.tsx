@@ -96,7 +96,7 @@ export function Pricing() {
               </div>
 
               <Link
-                href="/dashboard"
+                href="/signup"
                 className={`block w-full py-3 px-6 rounded-lg font-medium text-center mb-8 transition-all ${
                   plan.highlighted
                     ? 'bg-white text-ninja-purple hover:shadow-xl'

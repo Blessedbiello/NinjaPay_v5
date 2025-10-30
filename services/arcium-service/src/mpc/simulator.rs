@@ -1,7 +1,7 @@
-use std::error::Error;
-use std::collections::HashMap;
-use super::instructions::{CompiledInstruction, InstructionLoader};
 use super::encryption::EncryptionHelper;
+use super::instructions::{CompiledInstruction, InstructionLoader};
+use std::collections::HashMap;
+use std::error::Error;
 use std::sync::Arc;
 
 /// MPC Simulator for local development
@@ -19,7 +19,10 @@ pub struct MpcSimulator {
 
 impl MpcSimulator {
     /// Create a new MPC simulator with encryption helper
-    pub fn new(build_path: String, encryption: Arc<EncryptionHelper>) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        build_path: String,
+        encryption: Arc<EncryptionHelper>,
+    ) -> Result<Self, Box<dyn Error>> {
         let loader = InstructionLoader::new(build_path);
 
         // Load all available instructions
@@ -30,7 +33,10 @@ impl MpcSimulator {
             instructions.insert(instruction.name.clone(), instruction);
         }
 
-        log::info!("✅ MPC Simulator initialized with {} instructions", instructions.len());
+        log::info!(
+            "✅ MPC Simulator initialized with {} instructions",
+            instructions.len()
+        );
 
         Ok(Self {
             instructions,
@@ -48,16 +54,26 @@ impl MpcSimulator {
         encrypted_inputs: Vec<Vec<u8>>,
         user_pubkey: &str,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        log::info!("🔄 Simulating MPC execution: {} for user: {}", name, user_pubkey);
+        log::info!(
+            "🔄 Simulating MPC execution: {} for user: {}",
+            name,
+            user_pubkey
+        );
 
         // Get instruction bytecode
-        let instruction = self.instructions.get(name)
+        let instruction = self
+            .instructions
+            .get(name)
             .ok_or_else(|| format!("Instruction not found: {}", name))?;
 
-        log::debug!("Instruction bytecode size: {} bytes", instruction.bytecode.len());
+        log::debug!(
+            "Instruction bytecode size: {} bytes",
+            instruction.bytecode.len()
+        );
 
         // Decrypt inputs using real encryption
-        let decrypted_inputs = encrypted_inputs.iter()
+        let decrypted_inputs = encrypted_inputs
+            .iter()
             .map(|enc| self.encryption.decrypt_to_u64(enc, user_pubkey))
             .collect::<Result<Vec<u64>, _>>()?;
 
@@ -112,7 +128,11 @@ impl MpcSimulator {
         let mut balance = inputs[0];
         let amounts = &inputs[1..];
 
-        log::debug!("Batch payroll: balance={}, recipients={}", balance, amounts.len());
+        log::debug!(
+            "Batch payroll: balance={}, recipients={}",
+            balance,
+            amounts.len()
+        );
 
         // Calculate total amount
         let total: u64 = amounts.iter().sum();
@@ -126,7 +146,11 @@ impl MpcSimulator {
         // Deduct all amounts
         balance -= total;
 
-        log::debug!("Batch payroll complete: new_balance={}, total_paid={}", balance, total);
+        log::debug!(
+            "Batch payroll complete: new_balance={}, total_paid={}",
+            balance,
+            total
+        );
 
         Ok(balance)
     }
@@ -155,7 +179,11 @@ impl MpcSimulator {
         log::debug!("Validate: amount={}, max={}", amount, max_amount);
 
         // Return 1 if valid, 0 if invalid
-        let is_valid = if amount > 0 && amount <= max_amount { 1 } else { 0 };
+        let is_valid = if amount > 0 && amount <= max_amount {
+            1
+        } else {
+            0
+        };
 
         Ok(is_valid)
     }
@@ -175,7 +203,6 @@ impl MpcSimulator {
         Ok(sum)
     }
 
-
     /// Get available instructions
     pub fn list_instructions(&self) -> Vec<String> {
         self.instructions.keys().cloned().collect()
@@ -193,16 +220,15 @@ mod tests {
 
     fn create_test_simulator() -> MpcSimulator {
         let encryption = Arc::new(EncryptionHelper::new());
-        MpcSimulator::new("build".to_string(), encryption)
-            .unwrap_or_else(|_| {
-                // If build path doesn't exist, create empty simulator for testing
-                let loader = InstructionLoader::new("build".to_string());
-                MpcSimulator {
-                    instructions: HashMap::new(),
-                    loader,
-                    encryption: Arc::new(EncryptionHelper::new()),
-                }
-            })
+        MpcSimulator::new("build".to_string(), encryption).unwrap_or_else(|_| {
+            // If build path doesn't exist, create empty simulator for testing
+            let loader = InstructionLoader::new("build".to_string());
+            MpcSimulator {
+                instructions: HashMap::new(),
+                loader,
+                encryption: Arc::new(EncryptionHelper::new()),
+            }
+        })
     }
 
     #[test]

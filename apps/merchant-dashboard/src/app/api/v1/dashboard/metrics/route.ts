@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@ninjapay/database';
 import { getMerchantId } from '@/lib/auth';
+import { requireEncryptionMasterKey } from '@/lib/env';
 import { EncryptionAPIUtils } from '@ninjapay/solana-utils';
 
 // Initialize encryption helper
 const encryptionUtils = new EncryptionAPIUtils(
-  process.env.ENCRYPTION_MASTER_KEY || '0'.repeat(64)
+  requireEncryptionMasterKey()
 );
 
 export async function GET(request: NextRequest) {

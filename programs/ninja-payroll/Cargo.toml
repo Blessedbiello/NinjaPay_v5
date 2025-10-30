@@ -2,15 +2,16 @@
 name = "ninja-payroll"
 version = "0.1.0"
 edition = "2021"
+resolver = "2"
 
 [lib]
 crate-type = ["cdylib", "lib"]
 name = "ninja_payroll"
 
 [dependencies]
-anchor-lang = "0.29.0"
-anchor-spl = "0.29.0"
-ephemeral-rollups-sdk = { version = "0.1.0", features = ["anchor"] }
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
+ephemeral-rollups-sdk-v2 = { version = "0.1.2", features = ["anchor"] }
 
 [features]
 no-entrypoint = []
@@ -18,3 +19,6 @@ no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
 default = []
+
+[profile.release]
+overflow-checks = true

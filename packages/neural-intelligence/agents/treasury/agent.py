@@ -10,8 +10,19 @@ from datetime import datetime, timedelta
 
 from uagents import Context
 from agents.base import NeuralAgent, AgentResponse
-from agents.protocols import TreasuryOptimizationRequest, TreasuryOptimizationResponse
+from agents.protocols import (
+    TreasuryOptimizationRequest,
+    TreasuryOptimizationResponse,
+    RiskScoreQuery,
+    RiskScoreResponse,
+    FraudScoreQuery,
+    FraudScoreResponse,
+)
 from knowledge import get_knowledge_base
+import uuid
+
+L1_TX_COST = 0.0001  # Approximate Solana L1 fee in USDC
+L2_TX_COST = 0.02    # Approximate MagicBlock L2 flat fee
 
 
 class TreasuryAgent(NeuralAgent):
@@ -28,7 +39,10 @@ class TreasuryAgent(NeuralAgent):
     def __init__(self):
         super().__init__(
             name="TreasuryAgent",
-            seed=os.getenv("AGENT_SEED", "treasury_agent_seed_phrase"),
+            seed=os.getenv(
+                "TREASURY_AGENT_SEED",
+                os.getenv("AGENT_SEED", "treasury_agent_seed_phrase")
+            ),
             port=int(os.getenv("TREASURY_AGENT_PORT", 8101)),
             endpoint=[f"http://localhost:{os.getenv('TREASURY_AGENT_PORT', 8101)}/submit"],
             mailbox=os.getenv("AGENT_MAILBOX_KEY"),
@@ -39,6 +53,16 @@ class TreasuryAgent(NeuralAgent):
         self.register_message_handler("treasury_optimization", self.handle_optimization)
         self.optimizations_performed = 0
         self.total_savings_estimated = 0.0
+
+        # Store other agent addresses for inter-agent communication
+        self.compliance_agent_address = os.getenv(
+            "COMPLIANCE_AGENT_ADDRESS",
+            "agent1qf9uehs3x52awalgl3sp0uwu2pnmxww3vqfevnjjn8zlgc7gyzhgvacsy4g"
+        )
+        self.fraud_agent_address = os.getenv(
+            "FRAUD_AGENT_ADDRESS",
+            "agent1qv4s8msvuz509vdy44hcke7uve9tttg4phq87aukcfy50sww0stecgrn48y"
+        )
 
     async def _on_startup(self, ctx: Context):
         """Initialize agent"""
@@ -182,21 +206,17 @@ class TreasuryAgent(NeuralAgent):
             amount = payment.get("amount", 0)
             urgency = payment.get("urgency", 5)
 
-            # Use MeTTa to recommend routing
-            route = "L1"
+            route = None
             if self.knowledge_base:
                 try:
                     route = self.knowledge_base.recommend_routing(amount, urgency)
-                except Exception:
-                    # Fallback logic
-                    if amount < 100 and urgency < 5:
-                        route = "L2"
-                    elif urgency > 7:
-                        route = "L2"  # Speed priority
-                    else:
-                        route = "L1"  # Cost priority
+                except Exception as exc:
+                    self.logger.warning(f"MeTTa routing failed, using fallback: {exc}")
 
-            if route == "L1":
+            if route not in {"L1", "L2"}:
+                route = self._fallback_route(amount, urgency, goal)
+
+            if route.upper() == "L1":
                 l1_payments.append(payment)
             else:
                 l2_payments.append(payment)
@@ -218,16 +238,14 @@ class TreasuryAgent(NeuralAgent):
         l1_count = routing_strategy["l1_count"]
         l2_count = routing_strategy["l2_count"]
 
-        # L1 cost: ~0.0001 USDC/tx
-        # L2 cost: ~0.02 USDC flat
-        l1_cost = l1_count * 0.0001
-        l2_cost = l2_count * 0.02
+        total_count = l1_count + l2_count
+        actual_cost = (l1_count * L1_TX_COST) + (l2_count * L2_TX_COST)
+        all_l1_cost = total_count * L1_TX_COST
+        all_l2_cost = total_count * L2_TX_COST
+        baseline_cost = max(all_l1_cost, all_l2_cost)
 
-        # Compare to all L1
-        all_l1_cost = (l1_count + l2_count) * 0.0001
-
-        savings = all_l1_cost - (l1_cost + l2_cost)
-        return max(savings, 0)
+        savings = baseline_cost - actual_cost
+        return max(savings, 0.0)
 
     async def generate_recommendations(
         self,
@@ -272,6 +290,24 @@ class TreasuryAgent(NeuralAgent):
             return "medium"
         else:
             return "low"
+
+    def _fallback_route(self, amount: float, urgency: int, goal: str) -> str:
+        """
+        Provide deterministic routing when MeTTa recommendations are unavailable.
+
+        Prefers L2 for speed-sensitive or low-value payments that benefit from batching,
+        otherwise defaults to L1 for lower fees on larger amounts.
+        """
+        if goal == "speed":
+            return "L2" if urgency >= 5 else "L1"
+
+        if goal == "cost":
+            return "L2" if amount < 50 and urgency >= 3 else "L1"
+
+        # Balanced goal: urgent or micro payments -> L2, otherwise L1
+        if urgency >= 7 or amount < 25:
+            return "L2"
+        return "L1"
 
     async def optimize_liquidity(self, merchant_id: str):
         """Optimize liquidity for a merchant"""

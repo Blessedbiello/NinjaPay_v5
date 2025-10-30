@@ -1,14 +1,18 @@
+'use server';
+
+import { getAdminSecret, getAdminUrl } from './env';
+
 export type ApiOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: Record<string, unknown>;
   revalidate?: number;
 };
 
-const ADMIN_API_BASE = process.env.NEXT_PUBLIC_ADMIN_API_URL || 'http://localhost:3000/v1/admin';
+const ADMIN_API_BASE = getAdminUrl();
 
 export async function adminFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const url = `${ADMIN_API_BASE}${path}`;
-  const adminKey = process.env.NEXT_PUBLIC_ADMIN_API_KEY || 'dev_admin_key_12345';
+  const adminKey = getAdminSecret();
 
   const response = await fetch(url, {
     method: options.method ?? 'GET',
@@ -35,7 +39,7 @@ export const adminApi = {
       merchants: { total: number; active: number; pendingKyc: number };
       payments: { total: number; confirmed: number; lastHour: number };
       timestamp: string;
-    }>('/stats');
+    }>('/overview');
   },
 
   async getMerchants(page = 1, limit = 20) {

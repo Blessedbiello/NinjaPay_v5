@@ -1,11 +1,12 @@
 """Neural Intelligence API routes"""
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
 from ..agent_manager import AgentManager
+from ..main import agent_manager
 
 router = APIRouter()
 
@@ -48,12 +49,15 @@ class SupportQueryRequest(BaseModel):
     urgency: str = "normal"
 
 
+class BroadcastRequest(BaseModel):
+    message_type: str
+    data: Dict[str, Any]
+    target_agents: Optional[List[str]] = None
+
+
 # Dependency to get agent manager
 def get_agent_manager() -> AgentManager:
-    # This would normally be injected, but for now we'll create a singleton
-    if not hasattr(get_agent_manager, "instance"):
-        get_agent_manager.instance = AgentManager()
-    return get_agent_manager.instance
+    return agent_manager
 
 
 @router.post("/fraud/analyze")
@@ -158,14 +162,16 @@ async def get_agents_status(
 
 @router.post("/agents/broadcast")
 async def broadcast_to_agents(
-    message_type: str,
-    data: Dict[str, Any],
-    target_agents: List[str] | None = None,
+    request: BroadcastRequest,
     manager: AgentManager = Depends(get_agent_manager)
 ):
     """Broadcast message to multiple agents"""
     try:
-        results = await manager.broadcast_to_agents(message_type, data, target_agents)
+        results = await manager.broadcast_to_agents(
+            request.message_type,
+            request.data,
+            request.target_agents
+        )
         return {
             "timestamp": datetime.utcnow().isoformat(),
             "results": results

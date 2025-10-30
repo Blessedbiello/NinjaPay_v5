@@ -1,200 +1,265 @@
-import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { ArciumServiceClient } from './arcium-service-client';
+import { EncryptionAPIUtils } from './encryption';
 
-/**
- * Arcium MPC integration utilities
- *
- * This module provides interfaces for interacting with Arcium's MPC network
- * for confidential computations on Solana.
- */
-
-export interface ArciumConfig {
-  clusterAddress: string;
-  programId: string;
-  rpcUrl: string;
-}
-
-export interface ComputationRequest {
-  instructionName: string;
-  encryptedInputs: Buffer[];
-  userPubkey: PublicKey;
-  callbackUrl?: string;
-}
+export type ComputationLifecycleStatus =
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed';
 
 export interface ComputationResult {
   computationId: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: ComputationLifecycleStatus;
   result?: Buffer;
   error?: string;
+  createdAt?: number;
+  completedAt?: number;
+}
+
+export interface QueueComputationParams {
+  computationType: string;
+  encryptedInputs: Array<Buffer | string>;
+  userPubkey: PublicKey | string;
+  metadata?: Record<string, unknown>;
+  callbackUrl?: string;
+  entityType?: string;
+  referenceId?: string;
+  userSignature?: string;
+}
+
+export interface ConfidentialTransferParams {
+  userPubkey: PublicKey | string;
+  balance: bigint;
+  amount: bigint;
+  metadata?: Record<string, unknown>;
+  callbackUrl?: string;
+  entityType?: string;
+  referenceId?: string;
+  userSignature?: string;
+}
+
+export interface BatchPayrollParams {
+  userPubkey: PublicKey | string;
+  balance: bigint;
+  amounts: bigint[];
+  metadata?: Record<string, unknown>;
+  callbackUrl?: string;
+  entityType?: string;
+  referenceId?: string;
+  userSignature?: string;
+}
+
+export interface ArciumClientConfig {
+  /**
+   * 64 character hex master key shared with the Rust service.
+   */
+  masterKey: string;
+  /**
+   * Base URL of the Rust Arcium Service (default http://localhost:8001)
+   */
+  baseUrl?: string;
+  /**
+   * Optional Solana RPC – only required when using deriveClusterPDA.
+   */
+  rpcUrl?: string;
+  /**
+   * Optional program id – only required when using deriveClusterPDA.
+   */
+  programId?: string;
 }
 
 /**
- * Arcium MPC Client
- *
- * Handles encrypted computation requests to Arcium MPC network
+ * Thin wrapper around the Rust Arcium Service HTTP API that presents a
+ * convenient TypeScript interface for confidential computations.
  */
 export class ArciumClient {
-  private config: ArciumConfig;
-  private connection: Connection;
+  private readonly api: ArciumServiceClient;
+  private readonly encryption: EncryptionAPIUtils;
+  private readonly connection?: Connection;
+  private readonly programId?: PublicKey;
 
-  constructor(config: ArciumConfig) {
-    this.config = config;
-    this.connection = new Connection(config.rpcUrl);
+  constructor(config: ArciumClientConfig) {
+    if (!config.masterKey || config.masterKey.length !== 64) {
+      throw new Error(
+        'ArciumClient requires a 64 character hex ENCRYPTION_MASTER_KEY.'
+      );
+    }
+
+    this.api = new ArciumServiceClient({
+      baseUrl: config.baseUrl ?? 'http://localhost:8001',
+      masterKey: config.masterKey,
+    });
+
+    this.encryption = new EncryptionAPIUtils(config.masterKey);
+
+    if (config.rpcUrl) {
+      this.connection = new Connection(config.rpcUrl);
+    }
+
+    if (config.programId) {
+      this.programId = new PublicKey(config.programId);
+    }
   }
 
   /**
-   * Queue a computation to the Arcium MPC cluster
+   * Low-level helper to invoke any computation exposed by the Arcium service.
    */
-  async queueComputation(request: ComputationRequest): Promise<string> {
-    // Build instruction to invoke MPC computation
-    const instruction = await this.buildComputationInstruction(request);
+  async queueComputation(params: QueueComputationParams): Promise<string> {
+    const encryptedInputs = params.encryptedInputs.map((value) =>
+      typeof value === 'string' ? value : Buffer.from(value).toString('base64')
+    );
 
-    // Create transaction
-    const transaction = new Transaction().add(instruction);
+    const response = await this.api.invokeComputation({
+      computation_type: params.computationType,
+      encrypted_inputs: encryptedInputs,
+      user_pubkey:
+        typeof params.userPubkey === 'string'
+          ? params.userPubkey
+          : params.userPubkey.toBase58(),
+      metadata: params.metadata,
+      callback_url: params.callbackUrl,
+      entity_type: params.entityType,
+      reference_id: params.referenceId,
+      user_signature: params.userSignature,
+    });
 
-    // Return computation ID (derived from transaction signature)
-    const computationId = this.generateComputationId();
-
-    return computationId;
+    return response.computation_id;
   }
 
   /**
-   * Build Solana instruction to invoke MPC computation
+   * Queue a confidential transfer without waiting for completion.
    */
-  private async buildComputationInstruction(
-    request: ComputationRequest
-  ): Promise<TransactionInstruction> {
-    const programId = new PublicKey(this.config.programId);
-    const clusterPubkey = new PublicKey(this.config.clusterAddress);
+  async queueConfidentialTransfer(
+    params: ConfidentialTransferParams
+  ): Promise<{ computationId: string }> {
+    const userPubkey =
+      typeof params.userPubkey === 'string'
+        ? params.userPubkey
+        : params.userPubkey.toBase58();
 
-    // Instruction data format:
-    // - 8 bytes: instruction discriminator
-    // - Variable: encrypted inputs
-    const data = Buffer.concat([
-      Buffer.from([0x01]), // Queue computation discriminator
-      Buffer.from(request.instructionName),
-      ...request.encryptedInputs,
-    ]);
-
-    return new TransactionInstruction({
-      keys: [
-        { pubkey: request.userPubkey, isSigner: true, isWritable: true },
-        { pubkey: clusterPubkey, isSigner: false, isWritable: false },
-      ],
-      programId,
-      data,
+    return this.api.queueConfidentialTransfer({
+      userPubkey,
+      balance: params.balance,
+      amount: params.amount,
+      metadata: params.metadata,
+      callbackUrl: params.callbackUrl,
+      entityType: params.entityType,
+      referenceId: params.referenceId,
+      userSignature: params.userSignature,
     });
   }
 
   /**
-   * Poll for computation result
+   * Execute a confidential transfer and decrypt the new balance when completed.
    */
-  async getComputationResult(computationId: string): Promise<ComputationResult | null> {
-    // This would typically query the Arcium service or on-chain state
-    // For now, return placeholder
-    return null;
+  async confidentialTransfer(
+    params: ConfidentialTransferParams
+  ): Promise<bigint> {
+    const userPubkey =
+      typeof params.userPubkey === 'string'
+        ? params.userPubkey
+        : params.userPubkey.toBase58();
+
+    return this.api.confidentialTransfer(userPubkey, params.balance, params.amount, {
+      userSignature: params.userSignature,
+    });
   }
 
   /**
-   * Derive cluster PDA (Program Derived Address)
+   * Queue a batch payroll computation.
    */
-  async deriveClusterPDA(userPubkey: PublicKey): Promise<[PublicKey, number]> {
-    const programId = new PublicKey(this.config.programId);
+  async queueBatchPayroll(params: BatchPayrollParams): Promise<string> {
+    const userPubkey =
+      typeof params.userPubkey === 'string'
+        ? params.userPubkey
+        : params.userPubkey.toBase58();
+
+    const encryptedInputs = [
+      this.encryption.encryptForAPI(params.balance, userPubkey),
+      ...this.encryption.encryptBatchForAPI(params.amounts, userPubkey),
+    ];
+
+    return this.queueComputation({
+      computationType: 'batch_payroll',
+      encryptedInputs,
+      userPubkey,
+      metadata: params.metadata,
+      callbackUrl: params.callbackUrl,
+      entityType: params.entityType,
+      referenceId: params.referenceId,
+      userSignature: params.userSignature,
+    });
+  }
+
+  /**
+   * Retrieve computation status (base64 result converted to Buffer).
+   */
+  async getComputationResult(
+    computationId: string
+  ): Promise<ComputationResult | null> {
+    const status = await this.api.getComputationStatus(computationId);
+
+    if (!status) {
+      return null;
+    }
+
+    return {
+      computationId: status.computation_id,
+      status: status.status,
+      result: status.result ? Buffer.from(status.result, 'base64') : undefined,
+      error: status.error,
+      createdAt: status.created_at,
+      completedAt: status.completed_at,
+    };
+  }
+
+  /**
+    * Wait until the computation completes or fails.
+    */
+  async waitForCompletion(
+    computationId: string,
+    options?: { timeoutMs?: number; pollIntervalMs?: number }
+  ): Promise<ComputationResult> {
+    const status = await this.api.waitForCompletion(computationId, options);
+
+    return {
+      computationId: status.computation_id,
+      status: status.status,
+      result: status.result ? Buffer.from(status.result, 'base64') : undefined,
+      error: status.error,
+      createdAt: status.created_at,
+      completedAt: status.completed_at,
+    };
+  }
+
+  /**
+   * Convenience helper to derive the cluster PDA, if programId was supplied.
+   */
+  deriveClusterPDA(userPubkey: PublicKey): [PublicKey, number] {
+    if (!this.programId) {
+      throw new Error(
+        'deriveClusterPDA requires programId to be supplied to ArciumClient.'
+      );
+    }
 
     return PublicKey.findProgramAddressSync(
       [Buffer.from('cluster'), userPubkey.toBuffer()],
-      programId
+      this.programId
     );
   }
 
   /**
-   * Generate computation ID
+   * Access to the underlying HTTP client (advanced use-cases only).
    */
-  private generateComputationId(): string {
-    return `comp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-  }
-}
-
-/**
- * Encryption utilities for Arcium MPC
- *
- * ⚠️ DEPRECATED: Use EncryptionHelper from './encryption' instead
- * This class is kept for backward compatibility but should not be used for new code
- *
- * @deprecated Use EncryptionHelper for production-grade encryption
- */
-export class EncryptionUtils {
-  /**
-   * @deprecated Use EncryptionHelper.encryptU64() instead
-   */
-  static encryptValue(value: bigint | number): Buffer {
-    console.warn('EncryptionUtils.encryptValue is deprecated. Use EncryptionHelper from @ninjapay/solana-utils/encryption instead.');
-    const numValue = typeof value === 'bigint' ? Number(value) : value;
-    const buffer = Buffer.allocUnsafe(8);
-    buffer.writeBigUInt64LE(BigInt(numValue));
-    return buffer;
+  get service(): ArciumServiceClient {
+    return this.api;
   }
 
   /**
-   * @deprecated Use EncryptionHelper.decryptToU64() instead
+   * Optional access to the Solana connection when rpcUrl is configured.
    */
-  static decryptValue(encryptedData: Buffer): bigint {
-    console.warn('EncryptionUtils.decryptValue is deprecated. Use EncryptionHelper from @ninjapay/solana-utils/encryption instead.');
-    if (encryptedData.length < 8) {
-      throw new Error('Invalid encrypted data length');
-    }
-    return encryptedData.readBigUInt64LE(0);
+  get solanaConnection(): Connection | undefined {
+    return this.connection;
   }
-
-  /**
-   * @deprecated Use EncryptionHelper for batch operations
-   */
-  static encryptBatch(values: (bigint | number)[]): Buffer[] {
-    return values.map(v => this.encryptValue(v));
-  }
-
-  /**
-   * @deprecated Use EncryptionHelper for batch operations
-   */
-  static decryptBatch(encryptedValues: Buffer[]): bigint[] {
-    return encryptedValues.map(v => this.decryptValue(v));
-  }
-}
-
-/**
- * Helper to build confidential transfer transaction
- */
-export async function buildConfidentialTransfer(
-  client: ArciumClient,
-  sender: PublicKey,
-  recipient: PublicKey,
-  amount: bigint
-): Promise<ComputationRequest> {
-  // Encrypt the amount
-  const encryptedAmount = EncryptionUtils.encryptValue(amount);
-
-  return {
-    instructionName: 'encrypted_transfer',
-    encryptedInputs: [encryptedAmount],
-    userPubkey: sender,
-  };
-}
-
-/**
- * Helper to build batch payroll transaction
- */
-export async function buildBatchPayroll(
-  client: ArciumClient,
-  payer: PublicKey,
-  recipients: { address: PublicKey; amount: bigint }[]
-): Promise<ComputationRequest> {
-  // Encrypt all amounts
-  const encryptedAmounts = recipients.map(r =>
-    EncryptionUtils.encryptValue(r.amount)
-  );
-
-  return {
-    instructionName: 'batch_payroll',
-    encryptedInputs: encryptedAmounts.slice(0, 3), // Max 3 for now
-    userPubkey: payer,
-  };
 }

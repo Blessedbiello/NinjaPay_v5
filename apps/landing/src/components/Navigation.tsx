@@ -35,14 +35,14 @@ export function Navigation() {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center space-x-4">
-            <Link
-              href="/dashboard"
+            <a
+              href="http://localhost:3001"
               className="text-gray-600 hover:text-ninja-purple transition-colors"
             >
               Sign In
-            </Link>
+            </a>
             <Link
-              href="/dashboard"
+              href="/signup"
               className="px-4 py-2 bg-ninja-gradient text-white rounded-lg hover:shadow-lg transition-all"
             >
               Get Started
@@ -96,14 +96,14 @@ export function Navigation() {
               Docs
             </Link>
             <div className="pt-4 space-y-2">
-              <Link
-                href="/dashboard"
+              <a
+                href="http://localhost:3001"
                 className="block w-full px-4 py-2 text-center border border-ninja-purple text-ninja-purple rounded-lg"
               >
                 Sign In
-              </Link>
+              </a>
               <Link
-                href="/dashboard"
+                href="/signup"
                 className="block w-full px-4 py-2 text-center bg-ninja-gradient text-white rounded-lg"
               >
                 Get Started

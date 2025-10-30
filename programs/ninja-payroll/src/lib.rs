@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use ephemeral_rollups_sdk::anchor::{commit_accounts, commit_and_undelegate_accounts, ephemeral};
-use ephemeral_rollups_sdk::cpi::DelegateConfig;
+use ephemeral_rollups_sdk_v2::anchor::{delegate, ephemeral};
+use ephemeral_rollups_sdk_v2::cpi::DelegateConfig;
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("FEfFPJF8CMck4zvDPm6fGXcyUZifPHBT7P3YwCjdhHr7");
 
 /// NinjaPay Batch Payroll Program with MagicBlock Ephemeral Rollups
 ///
@@ -39,28 +39,31 @@ pub mod ninja_payroll {
 
     /// Delegate batch account to ephemeral rollup
     pub fn delegate_batch(ctx: Context<DelegateBatch>) -> Result<()> {
-        let batch = &mut ctx.accounts.batch;
-        require!(
-            batch.status == BatchStatus::Initialized,
-            PayrollError::InvalidBatchStatus
-        );
+        // Construct seeds for batch PDA
+        let batch_id = ctx.accounts.batch.batch_id;
+        let bump = ctx.accounts.batch.bump;
+        let batch_id_bytes = batch_id.to_le_bytes();
+        let bump_bytes = [bump];
+        let seeds: &[&[u8]] = &[
+            b"payroll_batch",
+            &batch_id_bytes,
+            &bump_bytes,
+        ];
 
-        // Delegate the batch PDA to ephemeral rollup
-        ctx.accounts.delegate_pda(
+        // Delegate the batch PDA to ephemeral rollup using v2 API
+        ctx.accounts.delegate_batch(
             &ctx.accounts.payer,
-            &[
-                b"payroll_batch",
-                &batch.batch_id.to_le_bytes(),
-                &[batch.bump],
-            ],
+            seeds,
             DelegateConfig {
-                validator: ctx.remaining_accounts.first().map(|acc| acc.key()),
+                validator: ctx.remaining_accounts.first().map(|acc| *acc.key),
                 ..Default::default()
             },
         )?;
 
+        // Update status after delegation
+        let batch = &mut ctx.accounts.batch;
         batch.status = BatchStatus::Delegated;
-        msg!("Batch {} delegated to ephemeral rollup", batch.batch_id);
+        msg!("Batch {} delegated to ephemeral rollup", batch_id);
         Ok(())
     }
 
@@ -111,6 +114,7 @@ pub mod ninja_payroll {
     }
 
     /// Commit intermediate state (optional during long batches)
+    /// Note: In v2, commits happen automatically based on commit_frequency_ms config
     pub fn commit_batch(ctx: Context<CommitBatch>) -> Result<()> {
         let batch = &ctx.accounts.batch;
 
@@ -119,16 +123,11 @@ pub mod ninja_payroll {
             PayrollError::InvalidBatchStatus
         );
 
-        // Commit current state to Solana while keeping delegation
-        commit_accounts(
-            &ctx.accounts.payer,
-            vec![&ctx.accounts.batch.to_account_info()],
-            &ctx.accounts.magic_context,
-            &ctx.accounts.magic_program,
-        )?;
+        // In ephemeral-rollups-sdk-v2, commits are automatic via MagicBlock
+        // No manual commit_accounts() call needed
 
         msg!(
-            "Batch {} committed: {}/{} payments processed",
+            "Batch {} state checkpoint: {}/{} payments processed",
             batch.batch_id,
             batch.processed_count,
             batch.total_recipients
@@ -137,6 +136,7 @@ pub mod ninja_payroll {
     }
 
     /// Finalize batch and settle to Solana
+    /// Note: Undelegation must be done separately via process_undelegation instruction
     pub fn finalize_batch(ctx: Context<FinalizeBatch>) -> Result<()> {
         let batch = &mut ctx.accounts.batch;
 
@@ -148,37 +148,24 @@ pub mod ninja_payroll {
         batch.status = BatchStatus::Finalized;
         batch.finalized_at = Some(Clock::get()?.unix_timestamp);
 
-        // Commit final state and undelegate
-        commit_and_undelegate_accounts(
-            &ctx.accounts.payer,
-            vec![&ctx.accounts.batch.to_account_info()],
-            &ctx.accounts.magic_context,
-            &ctx.accounts.magic_program,
-        )?;
-
         msg!(
             "Batch {} finalized: {} payments totaling {} tokens",
             batch.batch_id,
             batch.processed_count,
             batch.total_amount
         );
+        msg!("Call process_undelegation to undelegate and retrieve final state");
         Ok(())
     }
 
     /// Cancel batch and undelegate (emergency use)
+    /// Note: Undelegation must be done separately via process_undelegation instruction
     pub fn cancel_batch(ctx: Context<CancelBatch>) -> Result<()> {
         let batch = &mut ctx.accounts.batch;
         batch.status = BatchStatus::Cancelled;
 
-        // Commit and undelegate
-        commit_and_undelegate_accounts(
-            &ctx.accounts.payer,
-            vec![&ctx.accounts.batch.to_account_info()],
-            &ctx.accounts.magic_context,
-            &ctx.accounts.magic_program,
-        )?;
-
-        msg!("Batch {} cancelled and undelegated", batch.batch_id);
+        msg!("Batch {} cancelled", batch.batch_id);
+        msg!("Call process_undelegation to undelegate and retrieve final state");
         Ok(())
     }
 }
@@ -192,7 +179,7 @@ pub struct InitializeBatch<'info> {
         init,
         payer = payer,
         space = 8 + PayrollBatch::LEN,
-        seeds = [b"payroll_batch", &batch_id.to_le_bytes()],
+        seeds = [b"payroll_batch", batch_id.to_le_bytes().as_ref()],
         bump
     )]
     pub batch: Account<'info, PayrollBatch>,
@@ -205,13 +192,15 @@ pub struct InitializeBatch<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[delegate]
 #[derive(Accounts)]
 pub struct DelegateBatch<'info> {
     #[account(
         mut,
         seeds = [b"payroll_batch", &batch.batch_id.to_le_bytes()],
         bump = batch.bump,
-        has_one = authority
+        has_one = authority,
+        del
     )]
     pub batch: Account<'info, PayrollBatch>,
 
@@ -253,12 +242,6 @@ pub struct CommitBatch<'info> {
 
     #[account(mut)]
     pub payer: Signer<'info>,
-
-    /// CHECK: MagicBlock context account
-    pub magic_context: AccountInfo<'info>,
-
-    /// CHECK: MagicBlock program
-    pub magic_program: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -275,12 +258,6 @@ pub struct FinalizeBatch<'info> {
 
     #[account(mut)]
     pub payer: Signer<'info>,
-
-    /// CHECK: MagicBlock context account
-    pub magic_context: AccountInfo<'info>,
-
-    /// CHECK: MagicBlock program
-    pub magic_program: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -297,12 +274,6 @@ pub struct CancelBatch<'info> {
 
     #[account(mut)]
     pub payer: Signer<'info>,
-
-    /// CHECK: MagicBlock context account
-    pub magic_context: AccountInfo<'info>,
-
-    /// CHECK: MagicBlock program
-    pub magic_program: AccountInfo<'info>,
 }
 
 // Data Structures

@@ -3,6 +3,7 @@ Base Neural Agent class - extends uAgents framework
 """
 
 import asyncio
+import json
 import logging
 from typing import Any, Dict, Optional, Callable
 from datetime import datetime
@@ -76,8 +77,26 @@ class NeuralAgent:
             mailbox=mailbox,
         )
 
-        # Fund agent if on testnet
-        fund_agent_if_low(self.agent.wallet.address())
+        # Fund agent if on testnet (with timeout to avoid blocking)
+        try:
+            import signal
+
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Testnet funding timed out")
+
+            # Set 10 second timeout for funding
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(10)
+
+            try:
+                fund_agent_if_low(self.agent.wallet.address())
+            finally:
+                signal.alarm(0)  # Cancel alarm
+
+        except TimeoutError:
+            self.logger.warning("Testnet funding timed out - continuing without funds")
+        except Exception as e:
+            self.logger.warning(f"Could not fund agent: {e} - continuing anyway")
 
         # Database connections (initialized in startup)
         self.redis: Optional[redis.Redis] = None
@@ -222,7 +241,16 @@ class NeuralAgent:
                 "data": data,
                 "timestamp": datetime.utcnow().isoformat()
             }
-            await self.redis.publish(channel, str(message))
+            try:
+                payload = json.dumps(message)
+            except (TypeError, ValueError) as exc:
+                self.logger.error(
+                    f"Failed to serialize event payload: {exc}",
+                    extra={"event_type": event_type}
+                )
+                return
+
+            await self.redis.publish(channel, payload)
             self.logger.debug(f"Published event to {channel}")
 
     async def subscribe_to_events(self, event_types: list[str], callback: Callable):

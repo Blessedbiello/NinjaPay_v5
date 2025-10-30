@@ -43,7 +43,10 @@ class SupportAgent(NeuralAgent):
     def __init__(self):
         super().__init__(
             name="SupportAgent",
-            seed=os.getenv("AGENT_SEED", "support_agent_seed_phrase"),
+            seed=os.getenv(
+                "SUPPORT_AGENT_SEED",
+                os.getenv("AGENT_SEED", "support_agent_seed_phrase")
+            ),
             port=int(os.getenv("SUPPORT_AGENT_PORT", 8104)),
             endpoint=[f"http://localhost:{os.getenv('SUPPORT_AGENT_PORT', 8104)}/submit"],
             mailbox=os.getenv("AGENT_MAILBOX_KEY"),

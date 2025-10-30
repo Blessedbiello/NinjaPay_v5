@@ -1,7 +1,7 @@
+use crate::AppState;
 use actix_web::{get, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-use crate::AppState;
 
 #[derive(Serialize, Deserialize)]
 pub struct HealthResponse {
@@ -49,13 +49,12 @@ async fn detailed_health(data: web::Data<AppState>) -> impl Responder {
     let solana_status = check_solana_health().await;
     let arcium_status = check_arcium_health(&data).await;
 
-    let overall_status = if redis_status == "healthy"
-        && solana_status == "healthy"
-        && arcium_status == "healthy" {
-        "healthy"
-    } else {
-        "degraded"
-    };
+    let overall_status =
+        if redis_status == "healthy" && solana_status == "healthy" && arcium_status == "healthy" {
+            "healthy"
+        } else {
+            "degraded"
+        };
 
     HttpResponse::Ok().json(DetailedHealthResponse {
         status: overall_status.to_string(),

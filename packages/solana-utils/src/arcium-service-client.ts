@@ -26,6 +26,10 @@ export interface InvokeComputationRequest {
   encrypted_inputs: string[]; // Base64-encoded encrypted values
   user_pubkey: string; // Solana wallet address
   metadata?: Record<string, any>;
+  callback_url?: string;
+  entity_type?: 'payment_intent' | 'transaction' | string;
+  reference_id?: string;
+  user_signature?: string;
 }
 
 export interface InvokeComputationResponse {
@@ -143,6 +147,40 @@ export class ArciumServiceClient {
   }
 
   /**
+   * Queue a confidential transfer computation without waiting for completion
+   *
+   * @param params - Configuration for transfer
+   */
+  async queueConfidentialTransfer(params: {
+    userPubkey: string;
+    balance: number | bigint;
+    amount: number | bigint;
+    metadata?: Record<string, any>;
+    callbackUrl?: string;
+    entityType?: 'payment_intent' | 'transaction' | string;
+    referenceId?: string;
+    userSignature?: string;
+  }): Promise<{ computationId: string }> {
+    const encryptedInputs = [
+      this.encryption.encryptForAPI(params.balance, params.userPubkey),
+      this.encryption.encryptForAPI(params.amount, params.userPubkey),
+    ];
+
+    const response = await this.invokeComputation({
+      computation_type: 'encrypted_transfer',
+      encrypted_inputs: encryptedInputs,
+      user_pubkey: params.userPubkey,
+      metadata: params.metadata,
+      callback_url: params.callbackUrl,
+      entity_type: params.entityType,
+      reference_id: params.referenceId,
+      user_signature: params.userSignature,
+    });
+
+    return { computationId: response.computation_id };
+  }
+
+  /**
    * Send confidential transfer
    *
    * @param userPubkey - User's wallet address
@@ -153,7 +191,8 @@ export class ArciumServiceClient {
   async confidentialTransfer(
     userPubkey: string,
     balance: number | bigint,
-    amount: number | bigint
+    amount: number | bigint,
+    options: { userSignature?: string } = {}
   ): Promise<bigint> {
     // Encrypt inputs
     const encryptedBalance = this.encryption.encryptForAPI(balance, userPubkey);
@@ -168,6 +207,7 @@ export class ArciumServiceClient {
         operation: 'confidential_transfer',
         timestamp: Date.now(),
       },
+      user_signature: options.userSignature,
     });
 
     // Wait for result

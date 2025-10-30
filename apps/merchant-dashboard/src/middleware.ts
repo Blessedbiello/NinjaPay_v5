@@ -1,13 +1,20 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verify } from 'jsonwebtoken';
+import { jwtVerify } from 'jose';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error('JWT_SECRET environment variable must be defined and at least 32 characters');
+}
+
+const secretKey = new TextEncoder().encode(JWT_SECRET);
 
 // Public routes that don't require authentication
 const PUBLIC_ROUTES = [
   '/api/auth/nonce',
   '/api/auth/verify',
+  '/api/auth/logout',
   '/pay/', // Payment link checkout pages
   '/_next/',
   '/favicon.ico',
@@ -15,12 +22,17 @@ const PUBLIC_ROUTES = [
 
 interface JWTPayload {
   userId: string;
-  merchantId: string;
+  merchantId?: string;
   walletAddress: string;
-  email: string;
+  email?: string;
 }
 
-export function middleware(request: NextRequest) {
+async function verifyJwt(token: string): Promise<JWTPayload> {
+  const { payload } = await jwtVerify(token, secretKey);
+  return payload as JWTPayload;
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public routes
@@ -48,15 +60,20 @@ export function middleware(request: NextRequest) {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
     try {
-      const decoded = verify(token, JWT_SECRET) as JWTPayload;
+      const decoded = await verifyJwt(token);
 
-      // Create a new response with the user info in headers
-      const response = NextResponse.next();
-      response.headers.set('x-user-id', decoded.userId);
-      response.headers.set('x-merchant-id', decoded.merchantId);
-      response.headers.set('x-wallet-address', decoded.walletAddress);
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set('x-user-id', decoded.userId);
+      requestHeaders.set('x-wallet-address', decoded.walletAddress);
+      if (decoded.merchantId) {
+        requestHeaders.set('x-merchant-id', decoded.merchantId);
+      }
 
-      return response;
+      return NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
     } catch (error) {
       return NextResponse.json(
         {
@@ -72,24 +89,26 @@ export function middleware(request: NextRequest) {
   }
 
   // For non-API routes (dashboard pages), check if user is authenticated
-  // Check both cookie and localStorage (via checking if we're accessing dashboard)
   const cookieToken = request.cookies.get('auth_token')?.value;
 
   if (!cookieToken && pathname.startsWith('/dashboard')) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[middleware] Missing auth token for dashboard access');
+    }
     // Redirect to home/login page
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // If authenticated, set cookie for future requests
   if (cookieToken && pathname.startsWith('/dashboard')) {
-    const response = NextResponse.next();
-    response.cookies.set('auth_token', cookieToken, {
-      httpOnly: false, // Allow client-side access
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    });
-    return response;
+    try {
+      await verifyJwt(cookieToken);
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[middleware] Invalid auth token', error);
+      }
+      const url = new URL('/', request.url);
+      return NextResponse.redirect(url);
+    }
   }
 
   return NextResponse.next();

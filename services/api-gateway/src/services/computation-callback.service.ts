@@ -1,5 +1,7 @@
 import { PrismaClient, ComputationStatus, TxStatus } from '@prisma/client';
 import { createLogger } from '@ninjapay/logger';
+import { AppError } from '../middleware/errorHandler';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 interface CallbackResultPayload {
   ciphertext?: string;
@@ -10,6 +12,12 @@ interface CallbackResultPayload {
   signature?: string;
   amount_commitment?: string;
   [key: string]: unknown;
+}
+
+export interface CallbackVerificationContext {
+  signature?: string | null;
+  timestamp?: string | null;
+  rawBody: string;
 }
 
 export interface ComputationCallbackPayload {
@@ -51,10 +59,27 @@ const mapComputationToTxStatus = (status: ComputationStatus): TxStatus | undefin
 
 export class ComputationCallbackService {
   private readonly logger = createLogger('computation-callback');
+  private readonly hmacSecret: Buffer;
+  private readonly toleranceSeconds: number;
 
-  constructor(private readonly db: PrismaClient) {}
+  constructor(private readonly db: PrismaClient) {
+    const secret = process.env.ARCIUM_CALLBACK_SECRET?.trim();
+    if (!secret) {
+      throw new Error('ARCIUM_CALLBACK_SECRET must be defined');
+    }
 
-  async handleCallback(payload: ComputationCallbackPayload) {
+    const normalized = secret.startsWith('0x') ? secret.slice(2) : secret;
+    if (!/^[0-9a-fA-F]+$/.test(normalized) || normalized.length % 2 !== 0) {
+      throw new Error('ARCIUM_CALLBACK_SECRET must be a hex-encoded string');
+    }
+
+    this.hmacSecret = Buffer.from(normalized, 'hex');
+    const tolerance = Number(process.env.ARCIUM_CALLBACK_TOLERANCE_SECONDS ?? '300');
+    this.toleranceSeconds = Number.isFinite(tolerance) && tolerance > 0 ? tolerance : 300;
+  }
+
+  async handleCallback(payload: ComputationCallbackPayload, context: CallbackVerificationContext) {
+    this.verifySignature(context);
     const status = (payload.status as string).toUpperCase() as ComputationStatus;
 
     // Try to resolve the entity explicitly first
@@ -84,6 +109,42 @@ export class ComputationCallbackService {
       computationId: payload.computation_id,
       status,
     });
+  }
+
+  private verifySignature({ signature, timestamp, rawBody }: CallbackVerificationContext) {
+    if (!signature) {
+      throw new AppError('Missing callback signature', 401);
+    }
+
+    if (!timestamp) {
+      throw new AppError('Missing callback timestamp', 401);
+    }
+
+    const parsedTimestamp = Number(timestamp);
+    if (!Number.isFinite(parsedTimestamp)) {
+      throw new AppError('Invalid callback timestamp', 401);
+    }
+
+    const nowSeconds = Date.now() / 1000;
+    if (Math.abs(nowSeconds - parsedTimestamp) > this.toleranceSeconds) {
+      throw new AppError('Callback timestamp outside accepted window', 401);
+    }
+
+    const normalizedSignature = signature.trim().toLowerCase();
+    if (!/^[0-9a-f]+$/.test(normalizedSignature) || normalizedSignature.length % 2 !== 0) {
+      throw new AppError('Invalid callback signature format', 401);
+    }
+
+    const expectedHex = createHmac('sha256', this.hmacSecret)
+      .update(rawBody, 'utf8')
+      .digest('hex');
+
+    const expected = Buffer.from(expectedHex, 'hex');
+    const provided = Buffer.from(normalizedSignature, 'hex');
+
+    if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
+      throw new AppError('Invalid callback signature', 401);
+    }
   }
 
   private async updatePaymentIntent(

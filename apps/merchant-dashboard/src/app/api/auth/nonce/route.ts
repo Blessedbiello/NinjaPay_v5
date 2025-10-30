@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { nanoid } from 'nanoid';
-import { storeNonce } from '@/lib/auth/nonce-store';
+
+const API_BASE_URL =
+  process.env.API_GATEWAY_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:8001';
 
 /**
  * POST /api/auth/nonce
@@ -8,7 +11,13 @@ import { storeNonce } from '@/lib/auth/nonce-store';
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
+
     const { walletAddress } = body;
 
     if (!walletAddress || typeof walletAddress !== 'string') {
@@ -18,19 +27,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate a unique nonce
-    const nonce = `Sign this message to authenticate with NinjaPay:\n\nNonce: ${nanoid(
-      32
-    )}\nTimestamp: ${Date.now()}`;
+    const upstreamResponse = await fetch(`${API_BASE_URL}/v1/auth/nonce`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ walletAddress }),
+    });
 
-    storeNonce(walletAddress, nonce);
+    const payload = await upstreamResponse.json().catch(() => null);
+
+    if (!upstreamResponse.ok || !payload?.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: payload?.error?.code || 'NONCE_ERROR',
+            message: payload?.error?.message || 'Failed to obtain authentication nonce',
+          },
+        },
+        { status: upstreamResponse.status || 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      data: {
-        nonce,
-        expiresIn: 300, // 5 minutes
-      },
+      data: payload.data ?? payload,
     });
   } catch (error) {
     console.error('Error generating nonce:', error);

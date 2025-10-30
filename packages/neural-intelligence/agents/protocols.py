@@ -165,3 +165,86 @@ class CoordinationResponse(BaseModel):
     result: Optional[Dict[str, Any]] = None
     contributor: str
     timestamp: datetime
+
+
+# Inter-Agent Query Protocols
+class RiskScoreQuery(BaseModel):
+    """Query for merchant/transaction risk score"""
+    query_id: str
+    entity_type: str  # "merchant" or "transaction"
+    entity_id: str
+    requesting_agent: str
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RiskScoreResponse(BaseModel):
+    """Risk score response"""
+    query_id: str
+    entity_id: str
+    risk_score: float  # 0-1
+    risk_level: str  # "low", "medium", "high", "critical"
+    factors: List[str] = Field(default_factory=list)
+    confidence: float
+    responding_agent: str
+    timestamp: datetime
+
+
+class FraudScoreQuery(BaseModel):
+    """Query for fraud probability"""
+    query_id: str
+    transaction_id: str
+    user_id: str
+    requesting_agent: str
+    include_factors: bool = True
+
+
+class FraudScoreResponse(BaseModel):
+    """Fraud score response"""
+    query_id: str
+    transaction_id: str
+    fraud_probability: float  # 0-1
+    fraud_type: Optional[str] = None
+    factors: List[Dict[str, Any]] = Field(default_factory=list)
+    recommendation: str  # "approve", "review", "block"
+    confidence: float
+    responding_agent: str
+    timestamp: datetime
+
+
+class MerchantProfileQuery(BaseModel):
+    """Query for merchant profile/analytics"""
+    query_id: str
+    merchant_id: str
+    requesting_agent: str
+    fields_requested: List[str]  # ["risk", "fraud_history", "growth_metrics", "support_tickets"]
+
+
+class MerchantProfileResponse(BaseModel):
+    """Merchant profile response"""
+    query_id: str
+    merchant_id: str
+    profile_data: Dict[str, Any]
+    data_sources: List[str]
+    responding_agent: str
+    timestamp: datetime
+
+
+class AgentConsultation(BaseModel):
+    """Request consultation from another agent"""
+    consultation_id: str
+    requesting_agent: str
+    target_agent: str
+    question: str
+    context: Dict[str, Any] = Field(default_factory=dict)
+    urgency: str = "normal"
+
+
+class AgentConsultationResponse(BaseModel):
+    """Response to agent consultation"""
+    consultation_id: str
+    answer: str
+    reasoning: str
+    confidence: float
+    data: Dict[str, Any] = Field(default_factory=dict)
+    responding_agent: str
+    timestamp: datetime
