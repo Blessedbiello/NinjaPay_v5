@@ -10,7 +10,7 @@ export async function DELETE(
   try {
     const { id } = params;
 
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Verify the webhook belongs to this merchant before deleting
     const webhook = await prisma.webhook.findFirst({
@@ -61,7 +61,7 @@ export async function PATCH(
     const body = await request.json();
     const { enabled, url, events, description } = body;
 
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Verify the webhook belongs to this merchant
     const webhook = await prisma.webhook.findFirst({
@@ -132,7 +132,7 @@ export async function POST(
   try {
     const { id } = params;
 
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Verify the webhook belongs to this merchant
     const webhook = await prisma.webhook.findFirst({

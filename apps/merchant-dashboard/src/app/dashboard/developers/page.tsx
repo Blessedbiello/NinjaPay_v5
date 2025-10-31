@@ -106,7 +106,12 @@ export default function DevelopersPage() {
   const fetchApiKeys = async () => {
     setLoadingKeys(true);
     try {
-      const response = await fetch('/api/v1/api_keys');
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/v1/api_keys', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       const data = await response.json();
       if (data.success) {
         setApiKeys(data.data.items);
@@ -121,7 +126,12 @@ export default function DevelopersPage() {
   const fetchWebhooks = async () => {
     setLoadingWebhooks(true);
     try {
-      const response = await fetch('/api/v1/webhooks');
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/v1/webhooks', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       const data = await response.json();
       if (data.success) {
         setWebhooks(data.data.items);
@@ -137,9 +147,13 @@ export default function DevelopersPage() {
     if (!keyName) return;
 
     try {
+      const token = localStorage.getItem('auth_token');
       const response = await fetch('/api/v1/api_keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           name: keyName,
           permissions: ['read', 'write'],
@@ -151,9 +165,13 @@ export default function DevelopersPage() {
         await fetchApiKeys();
         setShowCreateKeyModal(false);
         setKeyName('');
+        alert('API key created successfully!');
+      } else {
+        alert('Failed to create API key: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error creating API key:', error);
+      alert('Failed to create API key');
     }
   };
 
@@ -161,8 +179,12 @@ export default function DevelopersPage() {
     if (!confirm('Are you sure you want to delete this API key?')) return;
 
     try {
+      const token = localStorage.getItem('auth_token');
       const response = await fetch(`/api/v1/api_keys/${id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
 
       const data = await response.json();
@@ -178,9 +200,13 @@ export default function DevelopersPage() {
     if (!webhookUrl || webhookEvents.length === 0) return;
 
     try {
+      const token = localStorage.getItem('auth_token');
       const response = await fetch('/api/v1/webhooks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           url: webhookUrl,
           events: webhookEvents,
@@ -195,6 +221,9 @@ export default function DevelopersPage() {
         setWebhookUrl('');
         setWebhookDescription('');
         setWebhookEvents(['payment.succeeded', 'payment.failed']);
+        alert('Webhook created successfully!');
+      } else {
+        alert('Failed to create webhook: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error creating webhook:', error);

@@ -10,7 +10,7 @@ export async function DELETE(
   try {
     const { id } = params;
 
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Verify the API key belongs to this merchant before deleting
     const apiKey = await prisma.apiKey.findFirst({
@@ -61,7 +61,7 @@ export async function PATCH(
     const body = await request.json();
     const { active } = body;
 
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Verify the API key belongs to this merchant
     const apiKey = await prisma.apiKey.findFirst({

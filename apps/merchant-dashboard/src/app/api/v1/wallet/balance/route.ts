@@ -9,7 +9,7 @@ import { getAllTokenBalances } from '@/lib/solana';
  */
 export async function GET(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Get merchant info
     const merchant = await prisma.merchant.findUnique({

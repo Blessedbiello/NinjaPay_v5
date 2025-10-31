@@ -8,7 +8,7 @@ import { getMerchantId } from '@/lib/auth';
  */
 export async function GET(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

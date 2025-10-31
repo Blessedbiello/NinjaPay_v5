@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const { id } = params;
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     const product = await prisma.product.findUnique({
       where: {
@@ -57,7 +57,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = params;
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
     const body = await request.json();
 
     // Check if product exists and belongs to merchant
@@ -123,7 +123,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = params;
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Check if product exists and belongs to merchant
     const existingProduct = await prisma.product.findUnique({

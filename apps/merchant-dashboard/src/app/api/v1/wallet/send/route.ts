@@ -15,7 +15,7 @@ const arciumClient = new ArciumServiceClient({
  */
 export async function POST(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
     const body = await request.json();
     const { recipient, amount, currency = 'USDC', description } = body;
 

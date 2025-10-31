@@ -1,28 +1,30 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus,
   Link2,
   Copy,
   ExternalLink,
   MoreVertical,
+  Trash2,
   Eye,
   EyeOff,
   QrCode,
   X,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { useProducts } from '@/hooks/useApi';
 
 export default function PaymentLinksPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [selectedLinkUrl, setSelectedLinkUrl] = useState('');
-  const [products, setProducts] = useState<any[]>([]);
   const [paymentLinks, setPaymentLinks] = useState<any[]>([]);
   const [loadingLinks, setLoadingLinks] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     productId: '',
     customUrl: '',
@@ -30,35 +32,74 @@ export default function PaymentLinksPage() {
     expiresAt: '',
     description: '',
   });
+  const isMountedRef = useRef(true);
+  const {
+    items: products,
+    loading: productsLoading,
+    error: productsError,
+    refetch: refetchProducts,
+  } = useProducts({ limit: 100 });
 
-  useEffect(() => {
-    // Fetch products for the dropdown
-    fetch('/api/v1/products')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setProducts(data.data.items);
-        }
-      })
-      .catch((err) => console.error('Error fetching products:', err));
+  const getAuthToken = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem('auth_token');
   }, []);
 
-  useEffect(() => {
-    // Fetch payment links from API
-    setLoadingLinks(true);
-    fetch('/api/v1/payment_links')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setPaymentLinks(data.data.items);
-        }
-      })
-      .catch((error) => {
-        console.error('Error fetching payment links:', error);
-      })
-      .finally(() => {
+  const fetchPaymentLinks = useCallback(async () => {
+    const token = getAuthToken();
+
+    if (!token) {
+      console.error('Missing auth token for payment links request');
+      if (isMountedRef.current) {
         setLoadingLinks(false);
+      }
+      return;
+    }
+
+    if (isMountedRef.current) {
+      setLoadingLinks(true);
+    }
+
+    try {
+      const response = await fetch('/api/v1/payment_links', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
+
+      const data = await response.json();
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      if (data.success) {
+        setPaymentLinks(data.data.items);
+      } else {
+        console.error('Error fetching payment links:', data.error);
+      }
+    } catch (error) {
+      if (isMountedRef.current) {
+        console.error('Error fetching payment links:', error);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setLoadingLinks(false);
+      }
+    }
+  }, [getAuthToken]);
+
+  useEffect(() => {
+    fetchPaymentLinks();
+  }, [fetchPaymentLinks]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const copyToClipboard = (text: string, id: string) => {
@@ -81,9 +122,19 @@ export default function PaymentLinksPage() {
     setLoading(true);
 
     try {
+      const token = getAuthToken();
+
+      if (!token) {
+        alert('Authentication required. Please log in again.');
+        return;
+      }
+
       const response = await fetch('/api/v1/payment_links', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           productId: formData.productId,
           customUrl: formData.customUrl || undefined,
@@ -104,8 +155,7 @@ export default function PaymentLinksPage() {
           expiresAt: '',
           description: '',
         });
-        // Refresh the page or update the list
-        window.location.reload();
+        await Promise.all([fetchPaymentLinks(), refetchProducts()]);
       } else {
         alert('Error: ' + data.error.message);
       }
@@ -114,6 +164,43 @@ export default function PaymentLinksPage() {
       alert('Failed to create payment link');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteLink = async (id: string, name: string) => {
+    if (!confirm(`Delete payment link "${name}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingId(id);
+
+    try {
+      const token = getAuthToken();
+
+      if (!token) {
+        alert('Authentication required. Please log in again.');
+        return;
+      }
+
+      const response = await fetch(`/api/v1/payment_links/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        await fetchPaymentLinks();
+      } else {
+        alert(data.error?.message || 'Failed to delete payment link');
+      }
+    } catch (error) {
+      console.error('Error deleting payment link:', error);
+      alert('Failed to delete payment link');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -276,9 +363,23 @@ export default function PaymentLinksPage() {
                     </div>
                   </div>
 
-                  <button className="p-2 hover:bg-primary-500/10 rounded-lg transition-colors flex-shrink-0">
-                    <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleDeleteLink(link.id, link.productName)}
+                      className="p-2 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0 text-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={deletingId === link.id}
+                      title="Delete payment link"
+                    >
+                      {deletingId === link.id ? (
+                        <span className="text-xs">Deleting...</span>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                    <button className="p-2 hover:bg-primary-500/10 rounded-lg transition-colors flex-shrink-0">
+                      <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Stats */}
@@ -355,18 +456,26 @@ export default function PaymentLinksPage() {
                   required
                   value={formData.productId}
                   onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
-                  className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg focus:outline-none focus:border-primary-500 transition-colors"
+                  disabled={productsLoading}
+                  className="w-full px-4 py-3 bg-dark-card border border-dark-border rounded-lg focus:outline-none focus:border-primary-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <option value="">Select a product</option>
+                  <option value="">
+                    {productsLoading ? 'Loading products...' : 'Select a product'}
+                  </option>
                   {products.map((product) => (
                     <option key={product.id} value={product.id}>
-                      {product.name} - {formatCurrency(parseFloat(product.price))}
+                      {product.name} - {formatCurrency(Number(product.price ?? 0))}
                     </option>
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground mt-1">
                   Select the product this link will sell
                 </p>
+                {productsError && (
+                  <p className="text-xs text-red-400 mt-2">
+                    Failed to load products: {productsError}
+                  </p>
+                )}
               </div>
 
               {/* Custom URL */}

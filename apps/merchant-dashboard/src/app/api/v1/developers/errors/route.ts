@@ -8,7 +8,7 @@ import { getMerchantId } from '@/lib/auth';
  */
 export async function GET(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '5');
 

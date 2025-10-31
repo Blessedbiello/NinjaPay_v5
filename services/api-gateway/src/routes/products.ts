@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/errorHandler';
+import { authenticateMerchant } from '../middleware/authenticate';
 import { ProductService } from '../services/product.service';
 import { prisma } from '@ninjapay/database';
 
@@ -38,12 +39,12 @@ const listProductsSchema = z.object({
 // POST /v1/products - Create product
 router.post(
   '/',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const body = createProductSchema.parse(req.body);
 
-    // TODO: Get merchantId from auth middleware
-    // For now, use the provided merchantId from body or default to first merchant
-    const merchantId = body.merchantId || 'cmgsmujfk0005xrj94pq6qhu2'; // Bprime's merchant ID
+    // Get merchantId from authenticated session
+    const merchantId = req.merchantId!;
 
     const product = await productService.create({
       merchantId,
@@ -79,6 +80,7 @@ router.post(
 // GET /v1/products/:id - Retrieve product
 router.get(
   '/:id',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const product = await productService.retrieve(req.params.id);
 
@@ -106,6 +108,7 @@ router.get(
 // PATCH /v1/products/:id - Update product
 router.patch(
   '/:id',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const body = updateProductSchema.parse(req.body);
 
@@ -142,6 +145,7 @@ router.patch(
 // DELETE /v1/products/:id - Delete product
 router.delete(
   '/:id',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     await productService.delete(req.params.id);
 
@@ -159,11 +163,12 @@ router.delete(
 // GET /v1/products - List products
 router.get(
   '/',
+  authenticateMerchant,
   asyncHandler(async (req, res) => {
     const query = listProductsSchema.parse(req.query);
 
-    // TODO: Get merchantId from auth middleware
-    const merchantId = 'temp-merchant-id';
+    // Get merchantId from authenticated session
+    const merchantId = req.merchantId!;
 
     const result = await productService.list({
       merchantId,

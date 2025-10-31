@@ -10,7 +10,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface DashboardMetrics {
@@ -29,22 +29,56 @@ export default function DashboardOverview() {
   const [showRevenue, setShowRevenue] = useState(false);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const getAuthToken = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    return localStorage.getItem('auth_token');
+  }, []);
 
   useEffect(() => {
-    fetch('/api/v1/dashboard/metrics')
-      .then((res) => res.json())
-      .then((data) => {
+    const fetchMetrics = async () => {
+      setLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const token = getAuthToken();
+
+        if (!token) {
+          setErrorMessage('Authentication required. Please log in again.');
+          return;
+        }
+
+        const response = await fetch('/api/v1/dashboard/metrics', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.status === 401) {
+          setErrorMessage('Session expired. Please authenticate again.');
+          return;
+        }
+
+        const data = await response.json();
+
         if (data.success) {
           setMetrics(data.data);
+        } else {
+          setErrorMessage('Unable to load dashboard metrics.');
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('Error fetching dashboard metrics:', error);
-      })
-      .finally(() => {
+        setErrorMessage('Unexpected error loading metrics.');
+      } finally {
         setLoading(false);
-      });
-  }, []);
+      }
+    };
+
+    fetchMetrics();
+  }, [getAuthToken]);
 
   return (
     <div className="space-y-6">
@@ -55,15 +89,21 @@ export default function DashboardOverview() {
           <p className="text-muted-foreground mt-1">
             Welcome back to your confidential payment dashboard
           </p>
-        </div>
-        <button
-          onClick={() => router.push('/dashboard/payment-links')}
-          className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow flex items-center gap-2"
-        >
-          <DollarSign className="w-4 h-4" />
-          Create Payment
-        </button>
       </div>
+      <button
+        onClick={() => router.push('/dashboard/payment-links')}
+        className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all btn-glow flex items-center gap-2"
+      >
+        <DollarSign className="w-4 h-4" />
+        Create Payment
+      </button>
+    </div>
+
+      {errorMessage && (
+        <div className="glass-card border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-3">
+          {errorMessage}
+        </div>
+      )}
 
       {/* Metrics Grid */}
       {loading ? (

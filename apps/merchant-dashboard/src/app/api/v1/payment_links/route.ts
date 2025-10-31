@@ -9,13 +9,46 @@ const encryptionUtils = new EncryptionAPIUtils(
   requireEncryptionMasterKey()
 );
 
+function normalizeSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+}
+
+async function generateUniqueSlug(baseSlug: string, baseUrl: string): Promise<string> {
+  const sanitizedBase = baseSlug || `link-${Date.now()}`;
+  let candidate = sanitizedBase;
+  let suffix = 2;
+
+  // Try incremental suffixes first
+  while (suffix < 25) {
+    const urlCandidate = `${baseUrl}/${candidate}`;
+    const existing = await prisma.paymentLink.findUnique({
+      where: { url: urlCandidate },
+    });
+
+    if (!existing) {
+      return candidate;
+    }
+
+    candidate = `${sanitizedBase}-${suffix}`;
+    suffix += 1;
+  }
+
+  // Fallback to timestamped slug if still colliding
+  return `${sanitizedBase}-${Date.now()}`;
+}
+
 /**
  * GET /api/v1/payment_links
  * List all payment links for the authenticated merchant
  */
 export async function GET(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '50');
@@ -64,7 +97,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     const body = await request.json();
     const {
@@ -138,17 +171,49 @@ export async function POST(request: NextRequest) {
       encryptionKey
     );
 
-    // Generate URL slug from product name if custom URL not provided
-    const slug = customUrl || product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
     // Get base URL from environment (defaults to production)
-    const baseUrl = process.env.NEXT_PUBLIC_PAYMENT_LINK_BASE_URL || 'https://pay.ninjapay.xyz';
+    const rawBaseUrl = process.env.NEXT_PUBLIC_PAYMENT_LINK_BASE_URL || 'https://pay.ninjapay.xyz';
+    const baseUrl = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
+
+    // Determine initial slug
+    const sourceForSlug = customUrl ?? product.name;
+    let baseSlug = normalizeSlug(sourceForSlug);
+
+    if (!baseSlug) {
+      baseSlug = `product-${Date.now()}`;
+    }
+
+    let finalSlug: string;
+
+    if (customUrl) {
+      const urlCandidate = `${baseUrl}/${baseSlug}`;
+      const existing = await prisma.paymentLink.findUnique({
+        where: { url: urlCandidate },
+      });
+
+      if (existing) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'CUSTOM_URL_TAKEN',
+              message: 'Custom URL is already in use. Please choose a different slug.',
+            },
+          },
+          { status: 409 }
+        );
+      }
+
+      finalSlug = baseSlug;
+    } else {
+      finalSlug = await generateUniqueSlug(baseSlug, baseUrl);
+    }
 
     // Create payment link (with product snapshot - no productId foreign key)
     const paymentLink = await prisma.paymentLink.create({
       data: {
         merchantId,
-        url: `${baseUrl}/${slug}`,
+        url: `${baseUrl}/${finalSlug}`,
         productName: product.name,
         amount: product.price, // Store plaintext for backwards compatibility
         currency: product.currency || 'USDC',

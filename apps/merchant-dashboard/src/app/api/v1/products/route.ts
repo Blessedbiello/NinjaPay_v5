@@ -8,7 +8,7 @@ import { getMerchantId } from '@/lib/auth';
  */
 export async function GET(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '50');
@@ -53,9 +53,29 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    console.log('[POST /api/v1/products] Starting product creation');
+
+    let merchantId: string;
+    try {
+      merchantId = await getMerchantId(request);
+      console.log('[POST /api/v1/products] Got merchantId:', merchantId);
+    } catch (authError) {
+      console.error('[POST /api/v1/products] Auth error:', authError);
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'AUTH_ERROR',
+            message: authError instanceof Error ? authError.message : 'Authentication failed',
+          },
+        },
+        { status: 401 }
+      );
+    }
 
     const body = await request.json();
+    console.log('[POST /api/v1/products] Request body:', JSON.stringify(body, null, 2));
+
     const {
       name,
       description,
@@ -67,6 +87,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!name || !price || price <= 0) {
+      console.error('[POST /api/v1/products] Validation failed: name or price invalid');
       return NextResponse.json(
         {
           success: false,
@@ -78,6 +99,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log('[POST /api/v1/products] Creating product with data:', { merchantId, name, price, currency });
 
     const product = await prisma.product.create({
       data: {
@@ -92,18 +115,20 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log('[POST /api/v1/products] Product created successfully:', product.id);
+
     return NextResponse.json({
       success: true,
       data: product,
     });
   } catch (error) {
-    console.error('Error creating product:', error);
+    console.error('[POST /api/v1/products] Unexpected error:', error);
     return NextResponse.json(
       {
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: 'Failed to create product',
+          message: error instanceof Error ? error.message : 'Failed to create product',
         },
       },
       { status: 500 }

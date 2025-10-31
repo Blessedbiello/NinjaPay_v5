@@ -29,6 +29,7 @@ interface QueuePaymentIntentOptions {
   merchantId?: string | null;
   metadata?: Record<string, any>;
   availableBalance?: bigint;
+  userSignature?: string;
 }
 
 export class ArciumClientService {

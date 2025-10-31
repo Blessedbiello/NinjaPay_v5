@@ -16,6 +16,9 @@ export async function POST(
   { params }: RouteParams
 ) {
   try {
+    const body = await request.json();
+    const { txSignature } = body;
+
     const paymentIntent = await prisma.paymentIntent.findUnique({
       where: { id: params.id },
     });
@@ -46,9 +49,24 @@ export async function POST(
       );
     }
 
+    // Update payment intent with transaction signature
+    const updateData: any = {
+      status: 'CONFIRMED',
+      finalizedAt: new Date(),
+    };
+
+    if (txSignature) {
+      updateData.finalizationSignature = txSignature;
+      updateData.metadata = {
+        ...paymentIntent.metadata,
+        transaction_signature: txSignature,
+        confirmed_at: new Date().toISOString(),
+      };
+    }
+
     const updated = await prisma.paymentIntent.update({
       where: { id: params.id },
-      data: { status: 'CONFIRMED' },
+      data: updateData,
       include: {
         customer: true,
         product: true,

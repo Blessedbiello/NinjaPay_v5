@@ -83,6 +83,13 @@ export default function ProductsPage() {
       let imageUrls: string[] = editingProduct ? [...imagePreviews] : [];
 
       if (imageFiles.length > 0) {
+        const token =
+          typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+
+        if (!token) {
+          throw new Error('Authentication required. Please log in again.');
+        }
+
         const formDataUpload = new FormData();
         imageFiles.forEach((file) => {
           formDataUpload.append('images', file);
@@ -90,6 +97,9 @@ export default function ProductsPage() {
 
         const uploadResponse = await fetch('/api/v1/upload', {
           method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
           body: formDataUpload,
         });
 

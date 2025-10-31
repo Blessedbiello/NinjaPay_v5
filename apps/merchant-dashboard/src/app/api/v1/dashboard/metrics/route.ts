@@ -11,7 +11,7 @@ const encryptionUtils = new EncryptionAPIUtils(
 
 export async function GET(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Fetch metrics in parallel
     const [

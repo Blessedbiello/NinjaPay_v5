@@ -6,7 +6,7 @@ import { getMerchantId } from '@/lib/auth';
 // GET /api/v1/api_keys - List all API keys for merchant
 export async function GET(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     const apiKeys = await prisma.apiKey.findMany({
       where: { merchantId },
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, permissions, expiresAt } = body;
 
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Validate input
     if (!name || typeof name !== 'string') {

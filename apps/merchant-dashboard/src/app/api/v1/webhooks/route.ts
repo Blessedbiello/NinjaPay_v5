@@ -6,7 +6,7 @@ import { getMerchantId } from '@/lib/auth';
 // GET /api/v1/webhooks - List all webhooks for merchant
 export async function GET(request: NextRequest) {
   try {
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     const webhooks = await prisma.webhook.findMany({
       where: { merchantId },
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { url, events, description } = body;
 
-    const merchantId = getMerchantId(request);
+    const merchantId = await getMerchantId(request);
 
     // Validate input
     if (!url || typeof url !== 'string') {

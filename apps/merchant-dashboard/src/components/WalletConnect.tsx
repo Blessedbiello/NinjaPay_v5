@@ -3,7 +3,7 @@
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useRouter } from 'next/navigation';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { LogOut, User } from 'lucide-react';
 import bs58 from 'bs58';
 import { apiClient } from '@/lib/api-client';
@@ -15,6 +15,7 @@ export function WalletConnect() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [merchantInfo, setMerchantInfo] = useState<any>(null);
   const router = useRouter();
+  const authAttemptedRef = useRef(false);
 
   const navigateToDashboard = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -48,8 +49,14 @@ export function WalletConnect() {
 
   // When wallet connects, authenticate with backend
   useEffect(() => {
-    if (connected && publicKey && !isAuthenticated && !isAuthenticating) {
+    if (connected && publicKey && !isAuthenticated && !authAttemptedRef.current) {
+      authAttemptedRef.current = true;
       authenticateWallet();
+    }
+
+    // Reset auth attempted when wallet disconnects
+    if (!connected) {
+      authAttemptedRef.current = false;
     }
   }, [connected, publicKey, isAuthenticated]);
 
@@ -146,6 +153,7 @@ export function WalletConnect() {
     } catch (error) {
       console.error('Authentication error:', error);
       alert('Failed to authenticate. Please try again.');
+      authAttemptedRef.current = false; // Allow retry
     } finally {
       setIsAuthenticating(false);
     }

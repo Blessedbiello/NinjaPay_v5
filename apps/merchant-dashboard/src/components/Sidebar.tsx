@@ -21,6 +21,7 @@ import {
   Calendar,
   FileText,
   Store,
+  Brain,
 } from 'lucide-react';
 
 const navigation = {
@@ -37,6 +38,7 @@ const navigation = {
     { name: 'Customers', href: '/dashboard/customers', icon: Users },
     { name: 'Payment Links', href: '/dashboard/payment-links', icon: Link2 },
     { name: 'Developers', href: '/dashboard/developers', icon: Code },
+    { name: 'Neural Intelligence', href: '/dashboard/neural', icon: Brain },
     { name: 'Settings', href: '/dashboard/settings', icon: Settings },
   ],
   payroll: [
